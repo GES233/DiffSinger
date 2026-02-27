@@ -26,3 +26,11 @@ DiffSinger 的 Elixir 包装。
 等想到再编。
 
 - Elixir 变量不可变的特性便于实现增量计算
+
+## 使用须知
+
+规避 Segmet fault 的方法：将 graph optimization level 改成 0 或 1 。
+
+```elixir
+Ortex.load(path, device, 1)
+```
