@@ -50,10 +50,22 @@ defmodule DiffSinger.Pipeline.OpenUTAULibExtractor do
     end
   end
 
+  # MUST USE Serial Executor
+  @spec model_helper(binary()) :: DiffSinger.ONNXResolver.signature()
+  def model_helper(model_path) do
+    Task.async(fn ->
+      model = Ortex.load(model_path, [:cpu], 1)
+
+      signature = DiffSinger.ONNXResolver.resolve(model)
+
+      signature
+    end) |> Task.await(:infinity)
+  end
+
   def load_vocoder(
         [%Orchid.Param{payload: _root_path}, %Orchid.Param{payload: _root_dsconfig}],
         _step_options
       ) do
-    # ...
+    # 1. when dsvocoder exist
   end
 end

@@ -13,7 +13,7 @@ defmodule Qixuan_V2_5_0 do
 end
 
 ## Temporary
-model_root_path = "priv/Qixuan_v2.5.0_DiffSinger_OpenUtau"
+model_root_path = "E:/ProgramAssets/OpenUTAUSingers/Qixuan_v2.5.0_DiffSinger_OpenUtau"
 model_path = fn sub -> Path.join(model_root_path, sub) end
 # Variance Model
 # pitch_predict_path = model_path.("")
@@ -24,4 +24,8 @@ acostic_model_path = model_path.("0816_qixuan_multilingual_acoustic.qixuan.onnx"
 # Vocoder
 _vocoder_path = model_path.("dsvocoder/nsf_hifigan_qixuan_004.onnx")
 
-acostic_model = Ortex.load(acostic_model_path) |> IO.inspect()
+acostic_model = Ortex.load(acostic_model_path, [:cpu], 1) |> IO.inspect()
+
+{inputs, outputs} = Ortex.Native.show_session(acostic_model.reference)
+
+
