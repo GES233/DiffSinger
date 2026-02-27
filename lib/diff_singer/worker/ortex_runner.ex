@@ -24,13 +24,19 @@ defmodule DiffSinger.Worker.OrtexRunner do
       e -> {:error, e}
     else
       model = %Ortex.Model{} ->
+        # use model session
+        signature = DiffSinger.ONNXResolver.resolve(model)
+
         # merge config
+        # ...
+
         {:ok,
          %{
            model: model,
            model_path: model_path,
            providers: providers,
-           optimization_level: optimization_level
+           optimization_level: optimization_level,
+           signature: {signature.inputs, signature.outputs}
          }}
     end
   end
@@ -42,5 +48,12 @@ defmodule DiffSinger.Worker.OrtexRunner do
     Logger.debug("[Symbiont] Inference took #{elapse / 1000}ms via provider #{inspect(providers)}")
 
     {:reply, {:ok, result}, state}
+  end
+
+  @impl true
+  def handle_info(:timeout, state) do
+    Logger.info("[Symbiont] 模型 #{state.model_path} 闲置超时，正在卸载并释放显存...")
+
+    {:stop, :normal, state}
   end
 end

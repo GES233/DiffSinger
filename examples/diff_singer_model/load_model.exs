@@ -20,12 +20,10 @@ model_path = fn sub -> Path.join(model_root_path, sub) end
 _linguisitic_path = model_path.("dsvariance/0816_qixuan_multilingual_multivar.qixuan.linguistic.onnx")
 _variance_path = model_path.("dsvariance/0816_qixuan_multilingual_multivar.qixuan.variance.onnx")
 # Acostic Model
-acostic_model_path = model_path.("0816_qixuan_multilingual_acoustic.qixuan.onnx")
+acoustic_model_path = model_path.("0816_qixuan_multilingual_acoustic.qixuan.onnx")
 # Vocoder
-_vocoder_path = model_path.("dsvocoder/nsf_hifigan_qixuan_004.onnx")
+vocoder_path = model_path.("dsvocoder/nsf_hifigan_qixuan_004.onnx")
 
-acostic_model = Ortex.load(acostic_model_path, [:cpu], 1) |> IO.inspect()
+acoustic_model = Ortex.load(acoustic_model_path, [:cpu], 1) |> IO.inspect()
 
-{inputs, outputs} = Ortex.Native.show_session(acostic_model.reference)
-
-
+{inputs, outputs} = Ortex.Native.show_session(acoustic_model.reference)
