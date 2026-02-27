@@ -32,9 +32,7 @@ defmodule DiffSinger.MixProject do
       # Use it until my fork can running ONNXRuntime
       # on Intel Arc via OpenVINO EP.
       {:ortex, git: "https://github.com/elixir-nx/ortex"},
-      # Doesn't need highly perfermence here.
-      # Or `https://github.com/KamilLelonek/yaml-elixir`?
-      {:yamerl, "~> 0.10"},
+      {:yaml_elixir, "~> 2.12"},
       # Orchestration
       {:orchid, "~> 0.5"},
       {:orchid_symbiont, "~> 0.1"}
