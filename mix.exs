@@ -36,7 +36,8 @@ defmodule DiffSinger.MixProject do
       # Or `https://github.com/KamilLelonek/yaml-elixir`?
       {:yamerl, "~> 0.10"},
       # Orchestration
-      {:orchid, "~> 0.5"}
+      {:orchid, "~> 0.5"},
+      {:orchid_symbiont, "~> 0.1"}
     ]
   end
 end
