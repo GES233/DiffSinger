@@ -23,7 +23,7 @@ defmodule DiffSinger.Worker.OrtexRunner do
     rescue
       e -> {:error, e}
     else
-      model ->
+      model = %Ortex.Model{} ->
         # merge config
         {:ok,
          %{
