@@ -7,11 +7,11 @@ defmodule DiffSinger.MixProject do
     [
       app: :diff_singer,
       version: @version,
-      build_path: "../../_build",
-      config_path: "../../config/config.exs",
-      deps_path: "../../deps",
-      lockfile: "../../mix.lock",
-      elixir: "~> 1.16",
+      build_path: "_build",
+      config_path: "config/config.exs",
+      deps_path: "deps",
+      lockfile: "mix.lock",
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -31,10 +31,12 @@ defmodule DiffSinger.MixProject do
       {:nx, "~> 0.8"},
       # Use it until my fork can running ONNXRuntime
       # on Intel Arc via OpenVINO EP.
-      {:ortex, "~> 0.1.0"},
+      {:ortex, git: "https://github.com/elixir-nx/ortex"},
       # Doesn't need highly perfermence here.
       # Or `https://github.com/KamilLelonek/yaml-elixir`?
-      {:yamerl, "~> 0.10.0"}
+      {:yamerl, "~> 0.10"},
+      # Orchestration
+      {:orchid, "~> 0.5"}
     ]
   end
 end
