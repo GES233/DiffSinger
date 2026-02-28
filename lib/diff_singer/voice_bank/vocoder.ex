@@ -10,8 +10,6 @@ defmodule DiffSinger.VoiceBank.Vocoder do
     |> Enum.filter(fn {k, _} -> vocoder_conf["model"] in k end)
     |> case do
       [{vocoder_path, signature}] ->
-        {signature, vocoder_conf}
-
         %VoiceBank.Model{
           id: :vocoder,
           path: vocoder_path,

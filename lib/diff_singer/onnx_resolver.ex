@@ -5,7 +5,7 @@ defmodule DiffSinger.ONNXResolver do
   以便为 Orchid 提供构建 DAG 的依据。
   """
 
-  defstruct [:inputs, :input_order, :outputs]
+  defstruct [:inputs, :input_order, :outputs, :output_order]
 
   @type tensor_info :: %{
           type: Nx.Type.t() | :unknown,
@@ -15,7 +15,8 @@ defmodule DiffSinger.ONNXResolver do
   @type signature :: %__MODULE__{
           inputs: %{String.t() => tensor_info()},
           input_order: [String.t()],
-          outputs: %{String.t() => tensor_info()}
+          outputs: %{String.t() => tensor_info()},
+          output_order: [String.t()],
         }
 
   @doc """
@@ -35,7 +36,8 @@ defmodule DiffSinger.ONNXResolver do
     %__MODULE__{
       inputs: parse_nodes(raw_inputs),
       input_order: raw_inputs |> Enum.map(fn {name, _, _} -> name end),
-      outputs: parse_nodes(raw_outputs)
+      outputs: parse_nodes(raw_outputs),
+      output_order: raw_outputs |> Enum.map(fn {name, _, _} -> name end),
     }
   end
 
