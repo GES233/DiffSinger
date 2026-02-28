@@ -8,7 +8,7 @@ defmodule DiffSinger.VoiceBank do
       |> read_yaml()
 
     char_conf =
-      [root_path, "dschar*.{yaml,yml}"]
+      [root_path, "char*.{yaml,yml}"]
       |> Path.join()
       |> read_yaml()
 
@@ -17,7 +17,7 @@ defmodule DiffSinger.VoiceBank do
     %__MODULE__{root_path: root_path, model: model, char_conf: char_conf, root_conf: root_conf}
   end
 
-  defp read_yaml(pattern) do
+  def read_yaml(pattern) do
     pattern
     |> Path.wildcard()
     |> Enum.map(&YamlElixir.read_all_from_file!/1)
@@ -45,5 +45,11 @@ defmodule DiffSinger.VoiceBank do
     (root_path <> "/**/*.onnx")
     |> Path.wildcard()
     |> Enum.map(fn p -> {Path.relative_to(p, root_path) |> Path.split(), model_helper(p)} end)
+    |> Enum.group_by(fn {k, _v} ->
+      case k do
+        [_] -> "root"
+        [head, _] -> head
+      end
+    end)
   end
 end
