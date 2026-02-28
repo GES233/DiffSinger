@@ -54,14 +54,23 @@ defmodule DiffSinger.ONNXResolver do
   # 匹配目标: "ty: Float32,"
   defp extract_nx_type(raw_str) do
     case Regex.run(~r/ty:\s*([A-Za-z0-9]+)/, raw_str) do
+      # ort src/value/impl_tensor/element.rs
+      [_, "Float16"] -> {:f, 16}
       [_, "Float32"] -> {:f, 32}
       [_, "Float64"] -> {:f, 64}
+      [_, "BFloat16"] -> {:bf, 16}
       [_, "Int64"] -> {:s, 64}
       [_, "Int32"] -> {:s, 32}
       [_, "Int16"] -> {:s, 16}
       [_, "Int8"] -> {:s, 8}
       [_, "Uint8"] -> {:u, 8}
       [_, "Bool"] -> {:u, 8}
+      [_, "Uint16"] -> {:u, 16}
+      [_, "Uint32"] -> {:u, 32}
+      [_, "Uint64"] -> {:u, 64}
+      [_, "Float8E4M3FN"] -> {:f8_e4m3fn, 8}
+      [_, "Complex64"] -> {:c, 64}
+      [_, "Complex128"] -> {:c, 128}
       _ -> :unknown
     end
   end

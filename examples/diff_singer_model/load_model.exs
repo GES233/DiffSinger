@@ -24,6 +24,6 @@ acoustic_model_path = model_path.("0816_qixuan_multilingual_acoustic.qixuan.onnx
 # Vocoder
 vocoder_path = model_path.("dsvocoder/nsf_hifigan_qixuan_004.onnx")
 
-acoustic_model = Ortex.load(acoustic_model_path, [:cpu], 1) |> IO.inspect()
+Ortex.load(acoustic_model_path, [:cpu], 1) |> DiffSinger.ONNXResolver.resolve() |> IO.inspect()
 
-{inputs, outputs} = Ortex.Native.show_session(acoustic_model.reference)
+DiffSinger.POC.run_pipeline(acoustic_model_path, vocoder_path)

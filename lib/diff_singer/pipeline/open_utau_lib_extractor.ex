@@ -1,6 +1,5 @@
 defmodule DiffSinger.Pipeline.OpenUTAULibExtractor do
-  def load_root_dsconfig(%Orchid.Param{payload: root_path}, _step_options) do
-    root_dsconfig =
+  def load_root_dsconfig(root_path) do
       [root_path, "dsconfig.{yaml,yml}"]
       |> Path.join()
       |> Path.wildcard()
@@ -11,31 +10,22 @@ defmodule DiffSinger.Pipeline.OpenUTAULibExtractor do
         _ = multi -> Enum.reduce(multi, &Map.merge/2)
       end
       |> Enum.uniq()
-      |> Enum.map(fn {k, v} -> {String.to_atom(k), v} end)
       |> Enum.into(%{})
-
-    {:ok, Orchid.Param.new(:root_dsconfig, :dsconfig, root_dsconfig)}
   end
 
-  def load_acoustic_model(
-        [%Orchid.Param{payload: root_path}, %Orchid.Param{payload: root_dsconfig}],
-        _step_options
-      ) do
-    with acoustic_path = Path.join(root_path, root_dsconfig.acoustic),
+  def load_acoustic_model(root_path, root_dsconfig) do
+    with acoustic_path = Path.join(root_path, root_dsconfig["acoustic"]),
          true <- File.exists?(acoustic_path) do
       # TODO: write opts
-      {:ok, Orchid.Param.new(:acoustic_path, DiffSinger.Worker.OrtexRunner, [])}
     else
       false -> {:error, {:file_not_exist, :acoustic_path}}
     end
   end
 
-  def phonemes_dictionary_loader(
-        [%Orchid.Param{payload: root_path}, %Orchid.Param{payload: root_dsconfig}],
-        _step_options
-      ) do
-    with phonemes_path = Path.join(root_path, root_dsconfig.phonemes),
-         true <- File.exists?(phonemes_path) do
+  def phonemes_dictionary_loader(root_path, root_dsconfig) do
+    with phonemes_path = Path.join(root_path, root_dsconfig["phonemes"]),
+    languages_path = Path.join(root_path, root_dsconfig["languages"]),
+         {true, _phonemes_exist} <- {File.exists?(phonemes_path), File.exists?(languages_path)} do
       case Path.extname(phonemes_path) do
         "json" ->
           # ...
@@ -46,7 +36,7 @@ defmodule DiffSinger.Pipeline.OpenUTAULibExtractor do
           nil
       end
     else
-      false -> {:error, {:file_not_exist, :phonemes_path}}
+      {false, _} -> {:error, {:file_not_exist, :phonemes_path}}
     end
   end
 
@@ -62,10 +52,9 @@ defmodule DiffSinger.Pipeline.OpenUTAULibExtractor do
     end) |> Task.await(:infinity)
   end
 
-  def load_vocoder(
-        [%Orchid.Param{payload: _root_path}, %Orchid.Param{payload: _root_dsconfig}],
-        _step_options
-      ) do
-    # 1. when dsvocoder exist
+  def get_all_models(root_path) do
+    root_path <> "/**/*.onnx"
+    |> Path.wildcard()
+    |> Enum.map(fn p -> {Path.relative_to(p, root_path) |> Path.split(), model_helper(p)} end)
   end
 end

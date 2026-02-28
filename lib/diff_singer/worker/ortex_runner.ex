@@ -15,7 +15,7 @@ defmodule DiffSinger.Worker.OrtexRunner do
     optimization_level = Keyword.get(opts, :optimization_level, 1)
 
     if optimization_level >= 2 do
-      Logger.warning("`optimization_level` too high may cause BEAM slicently crash.")
+      Logger.warning("`optimization_level` too high may cause BEAM crash slicently.")
     end
 
     try do
