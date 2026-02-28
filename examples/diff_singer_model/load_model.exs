@@ -111,19 +111,15 @@ defmodule DiffSinger.POC do
     # 设定：一共 3 个音素，时长分别是 10帧, 20帧, 30帧
     # 注意 DiffSinger 要求 batch_size = 1，所以 shape 都是 [1, 长度]
 
-    # 【音素级输入】 Shape: [1, 3]
-    tokens    = Nx.tensor([[10, 24, 30]], type: {:s, 64}) # 假设的音素 ID
-    languages = Nx.tensor([[0, 0, 0]], type: {:s, 64})    # 语种 ID (一般全 0)
-    durations = Nx.tensor([[10, 20, 30]], type: {:s, 64}) # 时长
+    tokens    = Nx.tensor([[4, 4, 8]], type: {:s, 64}) # aa aa aa
+    languages = Nx.tensor([[0, 0, 0]], type: {:s, 64})    # en
+    durations = Nx.tensor([[60, 60, 30]], type: {:s, 64}) # 时长
 
-    # 计算总帧数: 10 + 20 + 30 = 60帧
-    # 【帧级输入】 Shape: [1, 60]
-    # 我们用 Nx.broadcast 生成全为某一个常数的张量来充当曲线
-    f0          = Nx.broadcast(Nx.tensor(220.0, type: {:f, 32}), {1, 60}) # 假设全曲都是 220Hz (A3)
-    breathiness = Nx.broadcast(Nx.tensor(0.0, type: {:f, 32}), {1, 60})
-    voicing     = Nx.broadcast(Nx.tensor(1.0, type: {:f, 32}), {1, 60})
-    gender      = Nx.broadcast(Nx.tensor(0.0, type: {:f, 32}), {1, 60})
-    velocity    = Nx.broadcast(Nx.tensor(1.0, type: {:f, 32}), {1, 60})
+    f0          = Nx.broadcast(Nx.tensor(220.0, type: {:f, 32}), {1, 150}) # 假设全曲都是 220Hz (A3)
+    breathiness = Nx.broadcast(Nx.tensor(0.0, type: {:f, 32}), {1, 150})
+    voicing     = Nx.broadcast(Nx.tensor(1.0, type: {:f, 32}), {1, 150})
+    gender      = Nx.broadcast(Nx.tensor(0.0, type: {:f, 32}), {1, 150})
+    velocity    = Nx.broadcast(Nx.tensor(1.0, type: {:f, 32}), {1, 150})
 
     # 【全局输入 (浅层扩散参数)】 Shape: {} (标量)
     # 标量在 Nx 中直接用单值 tensor 表示

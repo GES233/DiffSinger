@@ -8,12 +8,6 @@ defmodule DiffSinger.VoiceBank.Acoustic do
       model["root"]
       |> Enum.filter(fn {k, _} -> acoustic_model_path in k end)
 
-    _opts =
-      conf |> Enum.filter(fn {k, _v} -> String.contains?(k, "use") end)
-
-    _mel =
-      conf |> Enum.filter(fn {k, _v} -> String.contains?(k, "mel") end) |> IO.inspect()
-
     %VoiceBank.Model{
       id: :acoustic_model,
       path: acoustic_path,
