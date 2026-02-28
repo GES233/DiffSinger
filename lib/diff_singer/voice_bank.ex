@@ -14,7 +14,28 @@ defmodule DiffSinger.VoiceBank do
 
     model = get_all_models(root_path)
 
-    %__MODULE__{root_path: root_path, model: model, char_conf: char_conf, root_conf: root_conf}
+    %DiffSinger.VoiceBank{root_path: root_path, model: model, char_conf: char_conf, root_conf: root_conf}
+  end
+
+  def all_in_one(root_path) do
+    base = load(root_path)
+
+    %{
+      vocoder: DiffSinger.VoiceBank.Vocoder.get_vocoder(base),
+      acoustic: DiffSinger.VoiceBank.Acoustic.get_acoustic_model(base),
+      maybe_pitch: %{
+        linguistic: DiffSinger.VoiceBank.Linguistic.get_linguistic_for_pitch(base),
+        predict: DiffSinger.VoiceBank.Pitch.get_pitch(base)
+      },
+      maybe_duration: %{
+        linguistic: DiffSinger.VoiceBank.Linguistic.get_linguistic_for_duration(base),
+        pitch: DiffSinger.VoiceBank.Duration.get_duration(base)
+      },
+      variance: %{
+        linguistic: DiffSinger.VoiceBank.Linguistic.get_linguistic_for_variance(base),
+        variance: DiffSinger.VoiceBank.Variance.get_variance(base)
+      }
+    }
   end
 
   def read_yaml(pattern) do

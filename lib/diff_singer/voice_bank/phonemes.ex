@@ -1,7 +1,7 @@
 defmodule DiffSinger.VoiceBank.Phonemes do
   alias DiffSinger.VoiceBank
 
-  def get_phonemes_dict(%VoiceBank{root_conf: conf, root_path: path}) do
+  def get_phonemes_dict_for_root(%VoiceBank{root_conf: conf, root_path: path}) do
     lang_dict = case conf["use_lang_id"] do
       nil -> nil
       true -> conf["languages"]
