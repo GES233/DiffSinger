@@ -1,4 +1,4 @@
-defmodule DiffSinger.Worker.OrtexRunner do
+defmodule Orchid.Symbiont.OrtexRunner do
   use GenServer
   require Logger
 
@@ -51,9 +51,22 @@ defmodule DiffSinger.Worker.OrtexRunner do
   end
 
   @impl true
+  def handle_call({:infer_with_ref, inputs_tuple}, _from, %{model: model} = state) do
+    {_elapse, result} = :timer.tc(fn -> Ortex.run(model, inputs_tuple) end)
+
+    {:reply, {:ok, result}, state}
+  end
+
+  def handle_call({:get_signature}, _from, %{signature: signature} = state) do
+    {:reply, {:ok, signature}, state}
+  end
+
+  @impl true
   def handle_info(:timeout, state) do
     Logger.info("[Symbiont] 模型 #{state.model_path} 闲置超时，正在卸载并释放显存...")
 
     {:stop, :normal, state}
   end
+
+  # load_from_ref
 end

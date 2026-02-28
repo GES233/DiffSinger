@@ -13,7 +13,8 @@ defmodule DiffSinger.MixProject do
       lockfile: "mix.lock",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      dialyzer: [flags: [:no_opaque, :no_contracts]]
     ]
   end
 
@@ -33,9 +34,11 @@ defmodule DiffSinger.MixProject do
       # on Intel Arc via OpenVINO EP.
       {:ortex, git: "https://github.com/elixir-nx/ortex"},
       {:yaml_elixir, "~> 2.12"},
+      {:jason, "~> 1.4"},
       # Orchestration
       {:orchid, "~> 0.5"},
-      {:orchid_symbiont, "~> 0.1"}
+      {:orchid_symbiont, "~> 0.1"},
+      {:lily, git: "https://github.com/SynapticStrings/Lily.git"}
     ]
   end
 end
