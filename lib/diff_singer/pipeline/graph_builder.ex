@@ -2,8 +2,8 @@ defmodule DiffSinger.Pipeline.GraphBuilder do
   @moduledoc """
   解析 ONNX，动态注册 Symbiont 蓝图，并构建纯数据 DAG。
   """
-  alias Lily.Graph
-  alias Lily.Graph.{Node, Edge}
+  alias Quincunx.Session.Segment.Graph
+  alias Quincunx.Session.Segment.Graph.{Node, Edge}
   alias DiffSinger.ONNXResolver
 
   @spec build_graph(binary(), binary()) :: {:ok, Graph.t()} | {:error, term()}

@@ -36,9 +36,9 @@ defmodule DiffSinger.MixProject do
       {:yaml_elixir, "~> 2.12"},
       {:jason, "~> 1.4"},
       # Orchestration
-      {:orchid, "~> 0.5"},
-      {:orchid_symbiont, "~> 0.1"},
-      {:lily, git: "https://github.com/SynapticStrings/Lily.git"}
+      {:orchid, git: "https://github.com/SynapticStrings/Orchid.git", branch: "core", override: true},
+      {:orchid_symbiont, git: "https://github.com/SynapticStrings/OrchidSymbiont.git"},
+      {:quincunx, git: "https://github.com/SynapticStrings/Quincunx.git"}
     ]
   end
 end
