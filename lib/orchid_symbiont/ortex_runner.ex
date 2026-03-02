@@ -5,7 +5,7 @@ defmodule Orchid.Symbiont.OrtexRunner do
   def start_link(arg) do
     {name, final_opts} = Keyword.pop(arg, :name)
 
-    Supervisor.start_link(__MODULE__, final_opts, name: name)
+    GenServer.start_link(__MODULE__, final_opts, name: name)
   end
 
   @impl true
