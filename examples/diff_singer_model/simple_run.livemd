@@ -3,7 +3,7 @@
 ```elixir
 Mix.install([
   # https://github.com/GES233/DiffSinger
-  {:diff_singer, path: "D:/CodeRepo/DiffSingerRepo/DiffSingerEx"}
+  {:diff_singer, git: "https://github.com/GES233/DiffSinger.git"}
 ])
 ```
 
@@ -30,44 +30,46 @@ model_config = DiffSinger.VoiceBank.Config.fetch_overview(model_root_path)
 
 ```elixir
 # An inspector
-model_config.predict_map.maybe_pitch.linguistic
+model_config.variance.variance.signature
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
-%DiffSinger.VoiceBank.Model{
-  id: :linguistic_for_pitch,
-  path: ["dspitch", "0817_qixuan_multilingual_pitch.qixuan.linguistic.onnx"],
-  signature: %DiffSinger.ONNXResolver{
-    inputs: %{
-      "languages" => %{type: {:s, 64}, shape: [1, -1]},
-      "ph_dur" => %{type: {:s, 64}, shape: [1, -1]},
-      "tokens" => %{type: {:s, 64}, shape: [1, -1]}
-    },
-    input_order: ["tokens", "languages", "ph_dur"],
-    outputs: %{
-      "encoder_out" => %{type: {:f, 32}, shape: [1, -1, 256]},
-      "x_masks" => %{type: {:u, 8}, shape: [1, -1]}
-    },
-    output_order: ["encoder_out", "x_masks"]
+%DiffSinger.ONNXResolver{
+  inputs: %{
+    "breathiness" => %{type: {:f, 32}, shape: [1, -1]},
+    "encoder_out" => %{type: {:f, 32}, shape: [1, -1, 256]},
+    "ph_dur" => %{type: {:s, 64}, shape: [1, -1]},
+    "pitch" => %{type: {:f, 32}, shape: [1, -1]},
+    "retake" => %{type: {:u, 8}, shape: [1, -1, 2]},
+    "steps" => %{type: {:s, 64}, shape: []},
+    "voicing" => %{type: {:f, 32}, shape: [1, -1]}
   },
-  maybe_config: %{
-    "hidden_size" => 256,
-    "hop_size" => 512,
-    "languages" => "0817_qixuan_multilingual_pitch.languages.json",
-    "linguistic" => "0817_qixuan_multilingual_pitch.qixuan.linguistic.onnx",
-    "phonemes" => "0817_qixuan_multilingual_pitch.phonemes.json",
-    "pitch" => "0817_qixuan_multilingual_pitch.qixuan.pitch.onnx",
-    "predict_dur" => false,
-    "sample_rate" => 44100,
-    "use_continuous_acceleration" => true,
-    "use_expr" => true,
-    "use_lang_id" => true,
-    "use_note_rest" => true
+  input_order: ["encoder_out", "ph_dur", "pitch", "breathiness", "voicing", "retake", "steps"],
+  outputs: %{
+    "breathiness_pred" => %{type: {:f, 32}, shape: [1, -1]},
+    "voicing_pred" => %{type: {:f, 32}, shape: [1, -1]}
   },
-  usable: true
+  output_order: ["breathiness_pred", "voicing_pred"]
 }
+```
+
+注册 Linster 捕获报错。
+
+```elixir
+:telemetry.attach(
+        "orchid-step-exception-logger",
+        [:orchid, :step, :exception],
+        &Orchid.Runner.Hooks.Telemetry.error_handler/4,
+        %{}
+      )
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:error, :already_exists}
 ```
 
 ## 构建入点的节点
@@ -76,13 +78,14 @@ model_config.predict_map.maybe_pitch.linguistic
 
 需要 MIDI 的一个主要原因是应用其中的时长信息作为一个 reference 以用作后续音素的时长预测。
 
+后续将会实现一个栅格化的节点来适配对音符以及音素的处理。
+
 ```elixir
 defmodule CommonEncoder do
-  @type current_phoneme :: {lang_name :: binary(), current_phoneme_under_lang :: binary()}
-  @type current_word :: [{[current_phoneme], word_duration :: non_neg_integer()}]
+  @moduledoc """
+  针对歌词以及音高进行初步编码，以便后续模型使用。
+  """
 
-  # 输出直接连接 duration.linguistic 模型的输入
-  # ["tokens", "languages", "word_div", "word_dur"]
   def run_partial(%Orchid.Param{payload: words}, opts) do
    lang_dict = Keyword.fetch!(opts, :lang_dict)
     phoneme_dict = Keyword.fetch!(opts, :phoneme_dict)
@@ -168,7 +171,7 @@ end
 
 ```elixir
 # 变分模型
-%{maybe_lang_dict: lang_dict, phoneme_dict: phoneme_dict} = model_config.variance.phonemes
+%{maybe_lang_dict: variance_lang_dict, phoneme_dict: variance_phoneme_dict} = model_config.variance.phonemes
 
 defmodule VarianceEncoder do
   use Orchid.Step
@@ -186,66 +189,20 @@ defmodule VarianceEncoder do
 end
 
 # 你好
-VarianceEncoder.run(
-  %Orchid.Param{payload: [
-    {[{"zh", "zh/n"}, {"zh", "zh/i"}], 200, 62},
-    {[{"zh", "zh/h"}, {"zh", "zh/ao"}], 220, 61}
-  ]},
-  lang_dict: lang_dict,
-  phoneme_dict: phoneme_dict
-)
+# VarianceEncoder.run(
+#   %Orchid.Param{payload: [
+#     {[{"zh", "zh/n"}, {"zh", "zh/i"}], 200, 62},
+#     {[{"zh", "zh/h"}, {"zh", "zh/ao"}], 220, 61}
+#   ]},
+#   lang_dict: variance_lang_dict,
+#   phoneme_dict: variance_phoneme_dict
+# )
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
-{:ok,
- [
-   %Orchid.Param{
-     name: :lang_map,
-     type: :payload,
-     payload: #Nx.Tensor<
-       s64[1][4]
-       [
-         [3, 3, 3, 3]
-       ]
-     >,
-     metadata: %{}
-   },
-   %Orchid.Param{
-     name: :phoneme_map,
-     type: :payload,
-     payload: #Nx.Tensor<
-       s64[1][4]
-       [
-         [28, 23, 21, 8]
-       ]
-     >,
-     metadata: %{}
-   },
-   %Orchid.Param{
-     name: :word_duration,
-     type: :payload,
-     payload: #Nx.Tensor<
-       s64[1][2]
-       [
-         [200, 220]
-       ]
-     >,
-     metadata: %{}
-   },
-   %Orchid.Param{
-     name: :ph_midi,
-     type: :payload,
-     payload: #Nx.Tensor<
-       s64[1][4]
-       [
-         [62, 62, 61, 61]
-       ]
-     >,
-     metadata: %{}
-   }
- ]}
+{:module, VarianceEncoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
 ```
 
 ## 搭建变分模型与音高时长预测模型
@@ -277,7 +234,7 @@ defmodule PredictDuration do
 
     {:ok, {encoder_out_tensor, mask_tensor}} = Orchid.Symbiont.call(duration_linguistic, {:infer, inputs})
 
-    {:ok, result} = Orchid.Symbiont.call(duration_predict, {:infer, {encoder_out_tensor, mask_tensor, phoneme_midi}})
+    {:ok, {result}} = Orchid.Symbiont.call(duration_predict, {:infer, {encoder_out_tensor, mask_tensor, phoneme_midi}})
 
     {:ok, [
       Orchid.Param.new(:ph_dur_pred, :encoder_out, result)
@@ -296,24 +253,160 @@ end
 )
 
 
-%{maybe_lang_dict: lang_dict, phoneme_dict: phoneme_dict} = model_config.predict_map.maybe_duration.phonemes
+%{maybe_lang_dict: duration_lang_dict, phoneme_dict: duration_phoneme_dict} = model_config.predict_map.maybe_duration.phonemes
 
-recipe = Orchid.Recipe.new([
+# recipe = Orchid.Recipe.new([
+#   {
+#     DurationPredictEncoder,
+#     :words, [:lang_map, :phoneme_map, :word_division, :word_duration, :ph_midi],
+#     [lang_dict: duration_lang_dict, phoneme_dict: duration_phoneme_dict]
+#   },
+#   {
+#     PredictDuration,
+#     [:lang_map, :phoneme_map, :word_division, :word_duration, :ph_midi], :res,
+#     extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]
+#   }
+# ])
+# inputs = %Orchid.Param{name: :words, payload: [
+#     {[{"zh", "zh/n"}, {"zh", "zh/i"}], 200, 60},
+#     {[{"zh", "zh/h"}, {"zh", "zh/ao"}], 220, 62}
+#   ]}
+# Orchid.run(recipe, inputs)
+
+:ok
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+**预测音素音高**：
+
+```elixir
+defmodule PredictPitch do
+  @behaviour Orchid.Symbiont.Step
+
+  def required, do: [:pitch_linguistic, :pitch_predict]
+
+  def run_with_model(
+    [
+      %Orchid.Param{payload: languages},
+      %Orchid.Param{payload: phonemes},
+      %Orchid.Param{payload: phoneme_duration},
+      %Orchid.Param{payload: note_midi}
+    ], handlers, opts) do
+
+    ph_dur =
+      phoneme_duration
+      |> Nx.backend_transfer(Nx.BinaryBackend)
+      |> Nx.round()
+      |> Nx.as_type(:s64)
+
+    {:ok, {encoder_out, _mask}} =
+      Orchid.Symbiont.call(
+        handlers.pitch_linguistic,
+        {:infer, {phonemes, languages, ph_dur}}
+      )
+
+    total_frames =
+      ph_dur
+      |> Nx.sum()
+      |> Nx.to_number()
+
+    key = Nx.Random.key(System.system_time())
+
+    {pitch_noise, _key} =
+      Nx.Random.normal(
+        key,
+        0.0,
+        1.0,
+        shape: {1, total_frames},
+        type: :f32
+      )
+
+    expr =
+      Nx.broadcast(Nx.tensor(1.0, type: :f32), {1, total_frames})
+
+    retake =
+      Nx.broadcast(Nx.tensor(1, type: :u8), {1, total_frames})
+
+    note_rest =
+      note_midi
+      |> Nx.equal(0)
+      |> Nx.as_type(:u8)
+
+    note_midi = note_midi |> Nx.as_type(:f32)
+
+    note_dur = ph_dur
+
+    steps =
+      opts
+      |> Keyword.get(:steps, 20)
+      |> Nx.tensor(type: :s64)
+
+    {:ok, {pitch_pred}} =
+      Orchid.Symbiont.call(
+        handlers.pitch_predict,
+        {:infer,
+          {
+            encoder_out,
+            ph_dur,
+            note_midi,
+            note_rest,
+            note_dur,
+            pitch_noise,
+            expr,
+            retake,
+            steps
+          }}
+      )
+
+    {:ok, Orchid.Param.new(:pitch_pred, :payload, pitch_pred)}
+  end
+end
+
+:ok = Orchid.Symbiont.register(
+  :pitch_linguistic,
+  {Orchid.Symbiont.OrtexRunner, [name: :pitch_linguistic, path: Path.join([model_root_path | model_config.predict_map.maybe_pitch.linguistic.path])]}
+)
+
+:ok = Orchid.Symbiont.register(
+  :pitch_predict,
+  {Orchid.Symbiont.OrtexRunner, [name: :pitch_predict, path: Path.join([model_root_path | model_config.predict_map.maybe_pitch.predict.path])]}
+)
+
+%{maybe_lang_dict: pitch_lang_dict, phoneme_dict: pitch_phoneme_dict} = model_config.predict_map.maybe_pitch.phonemes
+
+recipe = Orchid.Recipe.new(
+[
   {
     DurationPredictEncoder,
     :words, [:lang_map, :phoneme_map, :word_division, :word_duration, :ph_midi],
-    [lang_dict: lang_dict, phoneme_dict: phoneme_dict]
+    [lang_dict: duration_lang_dict, phoneme_dict: duration_phoneme_dict]
   },
   {
     PredictDuration,
-    [:lang_map, :phoneme_map, :word_division, :word_duration, :ph_midi], :res,
+    [:lang_map, :phoneme_map, :word_division, :word_duration, :ph_midi], :phoneme_duration_predict,
     extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]
   }
+] ++ [
+  {
+    PitchPredictEncoder, :words, [:pitch_lang, :pitch_phoneme, :phoneme_duration, :ph_midi],
+    [lang_dict: pitch_lang_dict, phoneme_dict: pitch_phoneme_dict]
+  },
+  {
+    PredictPitch, [:pitch_lang, :pitch_phoneme, :phoneme_duration_predict, :ph_midi], :res,
+    extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]
+  },
 ])
-inputs = %Orchid.Param{name: :words, payload: [
+inputs = [
+  %Orchid.Param{name: :words, payload: [
     {[{"zh", "zh/n"}, {"zh", "zh/i"}], 200, 60},
     {[{"zh", "zh/h"}, {"zh", "zh/ao"}], 220, 62}
-  ]}
+  ]},
+]
 Orchid.run(recipe, inputs)
 ```
 
@@ -321,9 +414,13 @@ Orchid.run(recipe, inputs)
 
 ```
 
-21:14:37.552 [debug] [Symbiont] Inference took 6.144ms via provider [:cpu]
+12:05:39.060 [debug] [Symbiont] Inference took 5.632ms via provider [:cpu]
 
-21:14:37.567 [debug] [Symbiont] Inference took 1.638ms via provider [:cpu]
+12:05:39.064 [debug] [Symbiont] Inference took 3.276ms via provider [:cpu]
+
+12:05:39.072 [debug] [Symbiont] Inference took 7.372ms via provider [:cpu]
+
+12:05:40.939 [debug] [Symbiont] Inference took 1854.464ms via provider [:cpu]
 ```
 
 <!-- livebook:{"output":true} -->
@@ -342,23 +439,12 @@ Orchid.run(recipe, inputs)
    },
    res: %Orchid.Param{
      name: :res,
-     type: :encoder_out,
-     payload: {#Nx.Tensor<
-        f32[1][4]
-        Ortex.Backend
-        [
-          [158.26341, 175.64656, 107.44484, 208.2445]
-        ]
-      >},
-     metadata: %{}
-   },
-   word_duration: %Orchid.Param{
-     name: :word_duration,
      type: :payload,
      payload: #Nx.Tensor<
-       s64[1][2]
+       f32[1][649]
+       Ortex.Backend
        [
-         [200, 220]
+         [60.559105, 60.589096, 60.46042, 60.330944, 60.271873, 60.2219, 60.188347, 60.141964, 60.09521, 60.064903, 60.04322, 60.030087, 60.01951, 60.018696, 60.027985, 60.04305, 60.056473, 60.0713, 60.079395, 60.07873, 60.07471, 60.071987, 60.055595, 60.039814, 60.037315, 60.047634, 60.05867, 60.06079, 60.05065, 60.0397, 60.033978, 60.027195, 60.026653, 60.02435, 60.026077, 60.035538, 60.053196, 60.063232, 60.063892, 60.056576, 60.041843, 60.04659, 60.05165, 60.063168, 60.057335, 60.048233, 60.030445, 60.031364, 60.03795, 60.038605, 60.021935, 59.99261, 59.971714, 59.953808, 59.94498, 59.942272, 59.93663, 59.9449, 59.96144, 59.988743, 60.00663, 59.996674, 59.961285, 59.91792, 59.88878, 59.88089, 59.89019, 59.906998, 59.93644, ...]
        ]
      >,
      metadata: %{}
@@ -396,6 +482,17 @@ Orchid.run(recipe, inputs)
      >,
      metadata: %{}
    },
+   word_duration: %Orchid.Param{
+     name: :word_duration,
+     type: :payload,
+     payload: #Nx.Tensor<
+       s64[1][2]
+       [
+         [200, 220]
+       ]
+     >,
+     metadata: %{}
+   },
    ph_midi: %Orchid.Param{
      name: :ph_midi,
      type: :payload,
@@ -406,124 +503,144 @@ Orchid.run(recipe, inputs)
        ]
      >,
      metadata: %{}
+   },
+   phoneme_duration: %Orchid.Param{
+     name: :phoneme_duration,
+     type: :payload,
+     payload: #Nx.Tensor<
+       s64[1][2]
+       [
+         [200, 220]
+       ]
+     >,
+     metadata: %{}
+   },
+   pitch_lang: %Orchid.Param{
+     name: :pitch_lang,
+     type: :payload,
+     payload: #Nx.Tensor<
+       s64[1][4]
+       [
+         [3, 3, 3, 3]
+       ]
+     >,
+     metadata: %{}
+   },
+   pitch_phoneme: %Orchid.Param{
+     name: :pitch_phoneme,
+     type: :payload,
+     payload: #Nx.Tensor<
+       s64[1][4]
+       [
+         [25, 20, 19, 7]
+       ]
+     >,
+     metadata: %{}
+   },
+   phoneme_duration_predict: %Orchid.Param{
+     name: :phoneme_duration_predict,
+     type: :encoder_out,
+     payload: #Nx.Tensor<
+       f32[1][4]
+       Ortex.Backend
+       [
+         [158.26341, 175.64656, 107.44484, 208.2445]
+       ]
+     >,
+     metadata: %{}
    }
  }}
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-
-21:14:37.567 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.3133900291.3848798210.4270>,
- {:put_chars, :unicode,
-  "Failed to write log message to stdout, trying stderr\n"}}
-
-21:14:37.567 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n21:14:37.567 [error] Writer crashed (:\""
-    (kernel 10.4.1) logger_h_common.erl:433: :logger_h_common.string_to_binary/1
-    (kernel 10.4.1) logger_h_common.erl:399: :logger_h_common.do_log_to_binary/2
-    (kernel 10.4.1) logger_h_common.erl:180: :logger_h_common.log/2
-    (kernel 10.4.1) logger_backend.erl:54: :logger_backend.call_handlers/3
-    (kernel 10.4.1) user_drv.erl:581: :user_drv.server/3
-    (stdlib 7.1) gen_statem.erl:3748: :gen_statem.loop_state_callback/11
-    (stdlib 7.1) proc_lib.erl:333: :proc_lib.init_p_do_apply/3
-
-```
-
-**预测音素音高**：
+**其他变分参数**：
 
 ```elixir
-defmodule PredictPitch do
+defmodule VarianceModel do
   @behaviour Orchid.Symbiont.Step
 
-  def required, do: [:pitch_linguistic, :pitch_predict]
+  def required, do: [:variance_linguistic, :variance_predict]
 
   def run_with_model(
     [
       %Orchid.Param{payload: languages},
       %Orchid.Param{payload: phonemes},
-      %Orchid.Param{payload: phoneme_duration},
-      %Orchid.Param{payload: note_midi},
-      %Orchid.Param{payload: note_rest},
-      %Orchid.Param{payload: note_dur},
+      %Orchid.Param{payload: ph_dur},
+      %Orchid.Param{payload: pitch}
     ],
     handlers,
     opts
   ) do
-    pitch_linguistic = handlers.pitch_linguistic
-    pitch_predict = handlers.pitch_predict
 
-    ph_dur = phoneme_duration
-    |> Nx.round()
-    |> Nx.as_type(:s64)
+    ph_dur =
+      ph_dur
+      |> Nx.backend_transfer(Nx.BinaryBackend)
+      |> Nx.round()
+      |> Nx.as_type(:s64)
 
-    {:ok, {encoder_out_tensor, mask_tensor}} =
-      Orchid.Symbiont.call(pitch_linguistic, {:infer, {phonemes, languages, ph_dur}})
+    {:ok, {encoder_out, _mask}} =
+      Orchid.Symbiont.call(
+        handlers.variance_linguistic,
+        {:infer, {phonemes, languages, ph_dur}}
+      )
 
-    total_frames = Nx.sum(ph_dur) |> Nx.to_number()
-    pitch_noise = Nx.random_normal({1, total_frames}, 0.0, 1.0, type: :f32)
-    retake_mask = Nx.broadcast(Nx.tensor(1, type: :u8), {1, total_frames})
-    expr = Nx.broadcast(Nx.tensor(1, type: :u8), {1, total_frames})
+    total_frames =
+      ph_dur
+      |> Nx.sum()
+      |> Nx.to_number()
 
-    mask_tensor
-    |> IO.inspect(label: :mask_tensor_in_pitch_pred)
-    # If all `1`
+    key = Nx.Random.key(System.system_time())
 
-    steps = opts
-      |> Keyword.fetch!(:steps, 20)
+    {breath_noise, key} =
+      Nx.Random.normal(key, 0.0, 1.0,
+        shape: {1, total_frames},
+        type: :f32
+      )
+
+    {voice_noise, _key} =
+      Nx.Random.normal(key, 0.0, 1.0,
+        shape: {1, total_frames},
+        type: :f32
+      )
+
+    retake =
+      Nx.broadcast(
+        Nx.tensor([1,1], type: :u8),
+        {1, total_frames, 2}
+      )
+
+    steps =
+      opts
+      |> Keyword.get(:steps, 20)
       |> Nx.tensor(type: :s64)
-  
-    # ["encoder_out", "ph_dur", "note_midi", "note_rest", "note_dur", "pitch", "expr", "retake", "steps"]
-    {:ok, result} = Orchid.Symbiont.call(pitch_predict, {:infer,
-      {encoder_out_tensor, ph_dur, note_midi, note_rest, note_dur, pitch_noise, expr, retake_mask, steps}
-    })
+
+    {:ok, {breath_pred, voice_pred}} =
+      Orchid.Symbiont.call(
+        handlers.variance_predict,
+        {:infer,
+          {
+            encoder_out,
+            ph_dur,
+            pitch,
+            breath_noise,
+            voice_noise,
+            retake,
+            steps
+          }}
+      )
 
     {:ok, [
-      Orchid.Param.new(:ph_dur_pred, :encoder_out, result)
+      Orchid.Param.new(:breathiness, :payload, breath_pred),
+      Orchid.Param.new(:voicing, :payload, voice_pred)
     ]}
   end
 end
-
-:ok = Orchid.Symbiont.register(
-  :pitch_linguistic,
-  {Orchid.Symbiont.OrtexRunner, [name: :pitch_linguistic, path: Path.join([model_root_path | model_config.predict_map.maybe_pitch.linguistic.path])]}
-)
-
-:ok = Orchid.Symbiont.register(
-  :pitch_predict,
-  {Orchid.Symbiont.OrtexRunner, [name: :pitch_predict, path: Path.join([model_root_path | model_config.predict_map.maybe_duration.duration.path])]}
-)
-
-%{maybe_lang_dict: lang_dict, phoneme_dict: phoneme_dict} = model_config.predict_map.maybe_pitch.phonemes
-
-# recipe = Orchid.Recipe.new([
-#   {
-#     DurationPredictEncoder, :words, [:duration_lang, :duration_phoneme, :duration_word_division, :word_duration, :ph_midi],
-#     [lang_dict: lang_dict, phoneme_dict: phoneme_dict]
-#   },
-#   {
-#     PredictDuration, [:duration_lang, :duration_phoneme, :duration_word_division, :word_duration, :ph_midi], :phoneme_duration,
-#     extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]
-#   },
-#   {
-#     PitchPredictEncoder, :words, [:pitch_lang, :pitch_phoneme, :phoneme_duration, :ph_midi],
-#     [lang_dict: lang_dict, phoneme_dict: phoneme_dict]
-#   },
-#   {
-#     PredictPitch, [:pitch_lang, :pitch_phoneme, :phoneme_duration, :ph_midi, :ph_midi_is_rest, :note_dur], :res,
-#     extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]
-#   },
-# ])
-# inputs = [
-#   %Orchid.Param{name: :words, payload: [
-#     {[{"zh", "zh/n"}, {"zh", "zh/i"}], 200, 60},
-#     {[{"zh", "zh/h"}, {"zh", "zh/ao"}], 220, 62}
-#   ]},
-#   %Orchid.Param{name: :ph_midi_is_rest, payload: Nx.tensor([[]])}
-# ]
-# Orchid.run(recipe, inputs)
 ```
 
-**其他变分参数**：TODO
+<!-- livebook:{"output":true} -->
+
+```
+{:module, VarianceModel, <<70, 79, 82, 49, 0, 0, 18, ...>>, ...}
+```
 
 ## 搭建声学模型与声码器
 
