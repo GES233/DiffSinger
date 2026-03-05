@@ -18,9 +18,9 @@ Mix.install([
 
 ## Fetch Model's Metadata
 
-获取声库的模型的元数据以及基本情况，作为后续构建依赖图的骨架。
+Obtain the metadata and basic information of the sound library's models as the skeleton for subsequent dependency graph construction.
 
-这里以 [OpenVPI](https://github.com/OpenVPI) 管理的 [Qixuan](https://beta.vocadb.net/Ar/147217) 为例。
+Here, we take [Qixuan](https://beta.vocadb.net/Ar/147217) v2.5.0 (for OpenUTAU), maintained by [OpenVPI](https://github.com/OpenVPI), as an example.
 
 ```elixir
 # If you have your local version
@@ -39,16 +39,16 @@ model_config = DiffSinger.VoiceBank.Config.fetch_overview(model_root_path)
 
 ## Prelude Steps
 
-这里是将歌词/MIDI 根据音素字典转变为对应音素 ID ~~/音高~~的一个节点。
+This is a node that converts lyrics/MIDI into corresponding phoneme IDs and pitches (MIDI) based on a phoneme dictionary.
 
-需要 MIDI 的一个主要原因是应用其中的时长信息作为一个 reference 以用作后续音素的时长预测。
+A primary reason for needing MIDI is to use its duration information as a reference for subsequent phoneme duration prediction.
 
-后续将会实现一个栅格化的节点来适配对音符以及音素的处理。
+A rasterized node will be implemented later to accommodate the processing of notes and phonemes.
 
 ```elixir
 defmodule CommonEncoder do
   @moduledoc """
-  针对歌词以及音高进行初步编码，以便后续模型使用。
+  The lyrics and pitch are initially encoded for use in subsequent models.
   """
 
   def run_partial(%Orchid.Param{payload: words}, opts) do
@@ -159,9 +159,9 @@ end
 {:module, VarianceEncoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
 ```
 
-## 搭建变分模型与音高时长预测模型
+## Variance Model
 
-**预测音素时长**：
+**Predict Phoneme Duration**:
 
 ```elixir
 defmodule PredictDuration do
@@ -203,7 +203,7 @@ end
 {:module, PredictDuration, <<70, 79, 82, 49, 0, 0, 14, ...>>, ...}
 ```
 
-**预测音素音高**：
+**Predict Pitch**:
 
 ```elixir
 defmodule PredictPitch do
@@ -295,7 +295,7 @@ end
 {:module, PredictPitch, <<70, 79, 82, 49, 0, 0, 18, ...>>, ...}
 ```
 
-**其他变分参数**：
+**Other Variance Params**:
 
 ```elixir
 defmodule VarianceModel do
@@ -385,9 +385,9 @@ end
 {:module, VarianceModel, <<70, 79, 82, 49, 0, 0, 18, ...>>, ...}
 ```
 
-## 搭建声学模型与声码器
+## Acoustic Model and Vocoder
 
-**声学模型**：
+**Acoustic Model**:
 
 ```elixir
 defmodule Acoustic do
@@ -461,7 +461,7 @@ end
 {:module, Acoustic, <<70, 79, 82, 49, 0, 0, 16, ...>>, ...}
 ```
 
-**声码器**：
+**Vocoder**:
 
 ```elixir
 defmodule NSFHifiGAN_Vocoder do
@@ -494,26 +494,31 @@ end
 defmodule TensorToWave do
   use Orchid.Step
 
-  def run(%Orchid.Param{payload: wave_tensor}, opts) do
+  # 
+   def run(%Orchid.Param{payload: wave_tensor}, opts) do
     pcm_data =
       wave_tensor
       |> Nx.flatten()
+      |> Nx.backend_transfer(Nx.BinaryBackend)
+      |> Nx.multiply(32767.0)
+      |> Nx.clip(-32768.0, 32767.0)
+      |> Nx.as_type(:s16)
       |> Nx.to_binary()
 
     sample_rate = Keyword.get(opts, :sample_rate, 44100)
-    byte_rate = sample_rate * 1 * 4  # sample_rate * channels * bytes_per_sample (Float32=4)
+    byte_rate = sample_rate * 1 * 2  # sample_rate * channels * bytes_per_sample (Int16=2)
     data_size = byte_size(pcm_data)
     file_size = 36 + data_size
 
     header = <<
       "RIFF", file_size::little-integer-size(32), "WAVE",
-      "fmt ", 16::little-integer-size(32),       # Subchunk1Size (16 for PCM)
-      3::little-integer-size(16),                # AudioFormat (3 = IEEE Float)
+      "fmt ", 16::little-integer-size(32),       # Subchunk1Size
+      1::little-integer-size(16),                # AudioFormat (1 = PCM)
       1::little-integer-size(16),                # NumChannels (1 = Mono)
       sample_rate::little-integer-size(32),      # SampleRate
       byte_rate::little-integer-size(32),        # ByteRate
-      4::little-integer-size(16),                # BlockAlign (channels * bytes_per_sample)
-      32::little-integer-size(16),               # BitsPerSample (32 bits)
+      2::little-integer-size(16),                # BlockAlign (channels * 2)
+      16::little-integer-size(16),               # BitsPerSample (16 bits)
       "data", data_size::little-integer-size(32) # Subchunk2Size
     >>
 
@@ -527,10 +532,10 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, TensorToWave, <<70, 79, 82, 49, 0, 0, 15, ...>>, ...}
+{:module, TensorToWave, <<70, 79, 82, 49, 0, 0, 16, ...>>, ...}
 ```
 
-## Build End-to-end Pipeline
+## Build Pipeline and Prepare to Demo
 
 ```elixir
 ## Variance Model
@@ -590,6 +595,9 @@ pitch_steps = [
       |> Nx.divide(12.0)
       |> then(&Nx.pow(2.0, &1))
       |> Nx.multiply(440)
+      |> then(fn converted_f0 ->
+           Nx.select(Nx.less(Nx.backend_transfer(midi_pred, Nx.BinaryBackend), 0.0), Nx.tensor(0.0), converted_f0)
+         end)
       |> then(&Orchid.Param.new(:f0, :tensor, &1))} end, :pitch_pred_midi, :pitch_pred, []}
 ]
 
@@ -671,37 +679,23 @@ Logger.info "Used #{elapse / 1000}ms."
 
 ```
 
-16:11:31.558 [debug] [Symbiont] Inference took 19.66ms via provider [:cpu]
+16:50:18.367 [debug] [Symbiont] Inference took 4.915ms via provider [:cpu]
 
-16:11:31.565 [debug] [Symbiont] Inference took 5.836ms via provider [:cpu]
+16:50:18.369 [debug] [Symbiont] Inference took 1.74ms via provider [:cpu]
 
-16:11:31.568 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.694552706.2860515329.94479>,
- {:put_chars, :unicode,
-  "Failed to write log message to stdout, trying stderr\n"}}
+16:50:18.389 [debug] [Symbiont] Inference took 19.046ms via provider [:cpu]
 
-16:11:31.567 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n16:11:31.559 [error] Writer crashed (:\""
-    (kernel 10.4.1) logger_h_common.erl:433: :logger_h_common.string_to_binary/1
-    (kernel 10.4.1) logger_h_common.erl:399: :logger_h_common.do_log_to_binary/2
-    (kernel 10.4.1) logger_h_common.erl:180: :logger_h_common.log/2
-    (kernel 10.4.1) logger_backend.erl:54: :logger_backend.call_handlers/3
-    (kernel 10.4.1) user_drv.erl:581: :user_drv.server/3
-    (stdlib 7.1) gen_statem.erl:3748: :gen_statem.loop_state_callback/11
-    (stdlib 7.1) proc_lib.erl:333: :proc_lib.init_p_do_apply/3
+16:50:19.253 [debug] [Symbiont] Inference took 858.418ms via provider [:cpu]
 
+16:50:19.257 [debug] [Symbiont] Inference took 3.379ms via provider [:cpu]
 
-16:11:31.904 [debug] [Symbiont] Inference took 9.728ms via provider [:cpu]
+16:50:19.925 [debug] [Symbiont] Inference took 660.479ms via provider [:cpu]
 
-16:11:32.895 [debug] [Symbiont] Inference took 871.116ms via provider [:cpu]
+16:50:22.617 [debug] [Symbiont] Inference took 2691.684ms via provider [:cpu]
 
-16:11:33.039 [debug] [Symbiont] Inference took 6.963ms via provider [:cpu]
+16:50:23.674 [debug] [Symbiont] Inference took 1055.948ms via provider [:cpu]
 
-16:11:33.639 [debug] [Symbiont] Inference took 584.704ms via provider [:cpu]
-
-16:11:37.008 [debug] [Symbiont] Inference took 2786.816ms via provider [:cpu]
-
-16:11:38.499 [debug] [Symbiont] Inference took 1419.776ms via provider [:cpu]
-
-16:11:38.502 [info] Used 7170.764ms.
+16:50:23.735 [info] Used 5373.129ms.
 ```
 
 <!-- livebook:{"output":true} -->
@@ -711,28 +705,12 @@ Logger.info "Used #{elapse / 1000}ms."
 ```
 
 ```elixir
-
-html = """
-<div style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; width: fit-content; background: #f8fafc;">
-  <strong>Qixuan DiffSinger Output</strong>
-  <div>Two Tigers (Liang Zhi Lao Hu)</div>
-  <br/><br/>
-  <audio controls autoplay>
-    <source src="data:audio/wav;base64,#{Base.encode64(results.audio.payload)}" type="audio/wav">
-    Your browser does not support the audio element.
-  </audio>
-</div>
-"""
-
-Kino.HTML.new(html)
-```
-
-```elixir
 alias VegaLite, as: Vl
 
 
-mel_tensor = results.mel.payload[0] |> Nx.backend_transfer(Nx.BinaryBackend)
-{frames, bins} = Nx.shape(mel_tensor)
+mel_tensor =
+  results.mel.payload[0]
+  |> Nx.backend_transfer(Nx.BinaryBackend)
 
 mel_data =
   mel_tensor
@@ -798,7 +776,39 @@ boundary_layer =
   |> Vl.mark(:rule, color: "red", strokeDash: [4, 4], strokeWidth: 1.5)
   |> Vl.encode_field(:x, "frame", type: :quantitative)
 
-Vl.new(width: 800, height: 400, title: "DiffSinger Output Analysis (Acoustic + F0 + Phonemes)")
+:ok
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+:ok
+```
+
+## Demostration
+
+```elixir
+File.write!("E:/final.wav", results.audio.payload)
+
+audio_html = """
+<div style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; width: fit-content; background: #f8fafc;">
+  <strong>Qixuan DiffSinger Output</strong>
+  <div>Two Tigers (Liang Zhi Lao Hu)</div>
+  <br/><br/>
+  <audio controls autoplay>
+    <source src="data:audio/wav;base64,#{Base.encode64(results.audio.payload)}" type="audio/wav">
+    Your browser does not support the audio element.
+  </audio>
+</div>
+"""
+
+Kino.HTML.new(audio_html)
+
+```
+
+```elixir
+
+Vl.new(width: 800, height: 400, title: "DiffSinger Output Analysis (Acoustic + F0 + Phoneme Duration)")
 |> Vl.resolve(:scale, y: :independent)
 |> Vl.layers([mel_layer, f0_layer, boundary_layer])
 |> Kino.VegaLite.new()
