@@ -3,7 +3,9 @@
 ```elixir
 Mix.install([
   {:diff_singer, git: "https://github.com/GES233/DiffSinger.git"},
-  {:kino, "~> 0.19.0"}
+  {:kino, "~> 0.19.0"},
+  {:vega_lite, "~> 0.1.8"},
+  {:kino_vega_lite, "~> 0.1.11"}
 ])
 
 :telemetry.attach(
@@ -14,7 +16,7 @@ Mix.install([
 )
 ```
 
-## 获得声库模型元数据
+## Fetch Model's Metadata
 
 获取声库的模型的元数据以及基本情况，作为后续构建依赖图的骨架。
 
@@ -35,20 +37,7 @@ model_config = DiffSinger.VoiceBank.Config.fetch_overview(model_root_path)
 :ok
 ```
 
-一个简单的 Inspector 。
-
-```elixir
-# An inspector
-# model_config.vocoder.signature
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-nil
-```
-
-## 构建入点的节点
+## Prelude Steps
 
 这里是将歌词/MIDI 根据音素字典转变为对应音素 ID ~~/音高~~的一个节点。
 
@@ -499,7 +488,7 @@ end
 {:module, NSFHifiGAN_Vocoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
 ```
 
-**后处理**（将张量变为可被播放的片段）
+**Post-process** (tensor to audio)
 
 ```elixir
 defmodule TensorToWave do
@@ -541,7 +530,7 @@ end
 {:module, TensorToWave, <<70, 79, 82, 49, 0, 0, 15, ...>>, ...}
 ```
 
-## End-to-end 管线
+## Build End-to-end Pipeline
 
 ```elixir
 ## Variance Model
@@ -656,8 +645,18 @@ final = [
 recipe = Orchid.Recipe.new(duration_steps ++ pitch_steps ++ variance_steps ++ acoustic_step ++ vocoder_step ++ final)
 inputs = [
   %Orchid.Param{name: :words, payload: [
-    {[{"zh", "zh/n"}, {"zh", "zh/i"}], 40, 60},
-    {[{"zh", "zh/h"}, {"zh", "zh/ao"}], 44, 62}
+    {[{"zh", "AP"}], 10, 0},
+    {[{"zh", "zh/l"}, {"zh", "zh/iang"}], 40, 60},
+    {[{"zh", "zh/zh"}, {"zh", "zh/i"}], 40, 62},
+    {[{"zh", "zh/l"}, {"zh", "zh/ao"}], 40, 64},
+    {[{"zh", "zh/h"}, {"zh", "zh/u"}], 40, 60},
+
+    {[{"zh", "AP"}], 1, 0},
+
+    {[{"zh", "zh/l"}, {"zh", "zh/iang"}], 40, 60},
+    {[{"zh", "zh/zh"}, {"zh", "zh/i"}], 40, 62},
+    {[{"zh", "zh/l"}, {"zh", "zh/ao"}], 40, 64},
+    {[{"zh", "zh/h"}, {"zh", "zh/u"}], 40, 60}
   ]},
 ]
 {elapse, {:ok, results}} = :timer.tc(&Orchid.run/2, [recipe, inputs], :microsecond)
@@ -672,23 +671,37 @@ Logger.info "Used #{elapse / 1000}ms."
 
 ```
 
-15:32:28.225 [debug] [Symbiont] Inference took 4.403ms via provider [:cpu]
+16:11:31.558 [debug] [Symbiont] Inference took 19.66ms via provider [:cpu]
 
-15:32:28.227 [debug] [Symbiont] Inference took 1.945ms via provider [:cpu]
+16:11:31.565 [debug] [Symbiont] Inference took 5.836ms via provider [:cpu]
 
-15:32:28.234 [debug] [Symbiont] Inference took 4.915ms via provider [:cpu]
+16:11:31.568 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.694552706.2860515329.94479>,
+ {:put_chars, :unicode,
+  "Failed to write log message to stdout, trying stderr\n"}}
 
-15:32:28.573 [debug] [Symbiont] Inference took 337.408ms via provider [:cpu]
+16:11:31.567 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n16:11:31.559 [error] Writer crashed (:\""
+    (kernel 10.4.1) logger_h_common.erl:433: :logger_h_common.string_to_binary/1
+    (kernel 10.4.1) logger_h_common.erl:399: :logger_h_common.do_log_to_binary/2
+    (kernel 10.4.1) logger_h_common.erl:180: :logger_h_common.log/2
+    (kernel 10.4.1) logger_backend.erl:54: :logger_backend.call_handlers/3
+    (kernel 10.4.1) user_drv.erl:581: :user_drv.server/3
+    (stdlib 7.1) gen_statem.erl:3748: :gen_statem.loop_state_callback/11
+    (stdlib 7.1) proc_lib.erl:333: :proc_lib.init_p_do_apply/3
 
-15:32:28.576 [debug] [Symbiont] Inference took 2.662ms via provider [:cpu]
 
-15:32:28.777 [debug] [Symbiont] Inference took 196.505ms via provider [:cpu]
+16:11:31.904 [debug] [Symbiont] Inference took 9.728ms via provider [:cpu]
 
-15:32:29.691 [debug] [Symbiont] Inference took 913.715ms via provider [:cpu]
+16:11:32.895 [debug] [Symbiont] Inference took 871.116ms via provider [:cpu]
 
-15:32:30.028 [debug] [Symbiont] Inference took 336.384ms via provider [:cpu]
+16:11:33.039 [debug] [Symbiont] Inference took 6.963ms via provider [:cpu]
 
-15:32:30.030 [info] Used 1808.588ms.
+16:11:33.639 [debug] [Symbiont] Inference took 584.704ms via provider [:cpu]
+
+16:11:37.008 [debug] [Symbiont] Inference took 2786.816ms via provider [:cpu]
+
+16:11:38.499 [debug] [Symbiont] Inference took 1419.776ms via provider [:cpu]
+
+16:11:38.502 [info] Used 7170.764ms.
 ```
 
 <!-- livebook:{"output":true} -->
@@ -698,21 +711,95 @@ Logger.info "Used #{elapse / 1000}ms."
 ```
 
 ```elixir
-wav_binary = results.audio.payload
-
-b64_audio = Base.encode64(wav_binary)
 
 html = """
 <div style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; width: fit-content; background: #f8fafc;">
   <strong>Qixuan DiffSinger Output</strong>
-  <div>"你好"(Hello) with C4 D4</div>
+  <div>Two Tigers (Liang Zhi Lao Hu)</div>
   <br/><br/>
   <audio controls autoplay>
-    <source src="data:audio/wav;base64,#{b64_audio}" type="audio/wav">
+    <source src="data:audio/wav;base64,#{Base.encode64(results.audio.payload)}" type="audio/wav">
     Your browser does not support the audio element.
   </audio>
 </div>
 """
 
 Kino.HTML.new(html)
+```
+
+```elixir
+alias VegaLite, as: Vl
+
+
+mel_tensor = results.mel.payload[0] |> Nx.backend_transfer(Nx.BinaryBackend)
+{frames, bins} = Nx.shape(mel_tensor)
+
+mel_data =
+  mel_tensor
+  |> Nx.to_batched(1)
+  |> Enum.with_index()
+  |> Enum.flat_map(fn {row_tensor, frame_idx} ->
+    row_tensor
+    |> Nx.to_flat_list()
+    |> Enum.with_index()
+    |> Enum.map(fn {val, bin_idx} ->
+      %{
+        "x1" => frame_idx, "x2" => frame_idx + 1,
+        "y1" => bin_idx, "y2" => bin_idx + 1,
+        "value" => val
+      }
+    end)
+  end)
+
+f0_data =
+  results.pitch_pred.payload[0]
+  |> Nx.backend_transfer(Nx.BinaryBackend)
+  |> Nx.to_flat_list()
+  |> Enum.with_index()
+  |> Enum.map(fn {f0, frame} -> %{"frame" => frame, "f0" => f0} end)
+
+durations = results.phoneme_duration_predict.payload[0]
+  |> Nx.backend_transfer(Nx.BinaryBackend)
+  |> Nx.to_flat_list()
+
+boundaries = Enum.scan(durations, 0, fn dur, acc -> dur + acc end)
+boundary_data = Enum.map(boundaries, fn b -> %{"frame" => b} end)
+
+
+mel_layer =
+  Vl.new()
+  |> Vl.data_from_values(mel_data)
+  |> Vl.mark(:rect, tooltip: false, stroke: nil)
+  |> Vl.encode_field(:x, "x1", type: :quantitative, title: "Time (Frames)")
+  |> Vl.encode_field(:x2, "x2")
+  |> Vl.encode_field(:y, "y1", type: :quantitative, title: "Mel Frequency Bin")
+  |> Vl.encode_field(:y2, "y2")
+  |> Vl.encode_field(:color, "value",
+    type: :quantitative,
+    scale: [scheme: "greys", reverse: true, domain: [-11.0, 2.0]],
+    legend: false
+  )
+
+f0_layer =
+  Vl.new()
+  |> Vl.data_from_values(f0_data)
+  |> Vl.mark(:line, color: "#007bff", strokeWidth: 2)
+  |> Vl.encode_field(:x, "frame", type: :quantitative)
+  |> Vl.encode_field(:y, "f0",
+    type: :quantitative,
+    title: "Pitch (Hz)",
+    axis: [orient: "right", titleColor: "#007bff"],
+    scale: [domain: [50, 800]]
+  )
+
+boundary_layer =
+  Vl.new()
+  |> Vl.data_from_values(boundary_data)
+  |> Vl.mark(:rule, color: "red", strokeDash: [4, 4], strokeWidth: 1.5)
+  |> Vl.encode_field(:x, "frame", type: :quantitative)
+
+Vl.new(width: 800, height: 400, title: "DiffSinger Output Analysis (Acoustic + F0 + Phonemes)")
+|> Vl.resolve(:scale, y: :independent)
+|> Vl.layers([mel_layer, f0_layer, boundary_layer])
+|> Kino.VegaLite.new()
 ```
