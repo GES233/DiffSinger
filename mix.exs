@@ -29,7 +29,7 @@ defmodule DiffSinger.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:nx, "~> 0.8"},
+      {:nx, "~> 0.11"},
       # Use it until my fork can running ONNXRuntime
       # on Intel Arc via OpenVINO EP.
       {:ortex, git: "https://github.com/elixir-nx/ortex"},
