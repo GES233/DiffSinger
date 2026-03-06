@@ -38,7 +38,6 @@ defmodule DiffSinger.MixProject do
       # Orchestration
       {:orchid, git: "https://github.com/SynapticStrings/Orchid.git", branch: "core", override: true},
       {:orchid_symbiont, git: "https://github.com/SynapticStrings/OrchidSymbiont.git"},
-      {:quincunx, git: "https://github.com/SynapticStrings/Quincunx.git"}
     ]
   end
 end

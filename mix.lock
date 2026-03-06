@@ -5,7 +5,6 @@
   "orchid": {:git, "https://github.com/SynapticStrings/Orchid.git", "4e3704f53375dda474a1a3a9c6fcba7066f33c94", [branch: "core"]},
   "orchid_symbiont": {:git, "https://github.com/SynapticStrings/OrchidSymbiont.git", "9fad09ce6aa4e779e4886838be183446757fbd7e", []},
   "ortex": {:git, "https://github.com/elixir-nx/ortex", "55dc3de016041b16ec6d17589f020937b0bb18fc", []},
-  "quincunx": {:git, "https://github.com/SynapticStrings/Quincunx.git", "6359310e222bb5d8c37f58e6c99dd434b189db60", []},
   "rustler": {:hex, :rustler, "0.37.3", "5f4e6634d43b26f0a69834dd1d3ed4e1710b022a053bf4a670220c9540c92602", [:mix], [{:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: false]}], "hexpm", "a6872c6f53dcf00486d1e7f9e046e20e01bf1654bdacc4193016c2e8002b32a2"},
   "telemetry": {:hex, :telemetry, "1.3.0", "fedebbae410d715cf8e7062c96a1ef32ec22e764197f70cda73d82778d61e7a2", [:rebar3], [], "hexpm", "7015fc8919dbe63764f4b4b87a95b7c0996bd539e0d499be6ec9d7f3875b79e6"},
   "yamerl": {:hex, :yamerl, "0.10.0", "4ff81fee2f1f6a46f1700c0d880b24d193ddb74bd14ef42cb0bcf46e81ef2f8e", [:rebar3], [], "hexpm", "346adb2963f1051dc837a2364e4acf6eb7d80097c0f53cbdc3046ec8ec4b4e6e"},
