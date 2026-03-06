@@ -84,7 +84,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, CommonEncoder, <<70, 79, 82, 49, 0, 0, 14, ...>>, ...}
+{:module, CommonEncoder, <<70, 79, 82, 49, 0, 0, 13, ...>>, ...}
 ```
 
 ```elixir
@@ -108,7 +108,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, DurationPredictEncoder, <<70, 79, 82, 49, 0, 0, 13, ...>>, ...}
+{:module, DurationPredictEncoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
 ```
 
 ```elixir
@@ -131,7 +131,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, PitchPredictEncoder, <<70, 79, 82, 49, 0, 0, 13, ...>>, ...}
+{:module, PitchPredictEncoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
 ```
 
 ```elixir
@@ -200,7 +200,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, PredictDuration, <<70, 79, 82, 49, 0, 0, 14, ...>>, ...}
+{:module, PredictDuration, <<70, 79, 82, 49, 0, 0, 13, ...>>, ...}
 ```
 
 **Predict Pitch**:
@@ -293,6 +293,31 @@ end
 
 ```
 {:module, PredictPitch, <<70, 79, 82, 49, 0, 0, 18, ...>>, ...}
+```
+
+```elixir
+defmodule MIDIToPitch do
+  use Orchid.Step
+
+  def run(%Orchid.Param{payload: midi_pred}, _opts) do
+    {:ok, midi_pred
+      |> Nx.backend_transfer(Nx.BinaryBackend)
+      |> Nx.add(-69.0)
+      |> Nx.divide(12.0)
+      |> then(&Nx.pow(2.0, &1))
+      |> Nx.multiply(440)
+      |> then(fn converted_f0 ->
+           Nx.select(Nx.less(Nx.backend_transfer(midi_pred, Nx.BinaryBackend), 0.0), Nx.tensor(0.0), converted_f0)
+         end)
+      |> then(&Orchid.Param.new(:f0, :tensor, &1))}
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, MIDIToPitch, <<70, 79, 82, 49, 0, 0, 13, ...>>, ...}
 ```
 
 **Other Variance Params**:
@@ -458,7 +483,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, Acoustic, <<70, 79, 82, 49, 0, 0, 16, ...>>, ...}
+{:module, Acoustic, <<70, 79, 82, 49, 0, 0, 15, ...>>, ...}
 ```
 
 **Vocoder**:
@@ -485,7 +510,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, NSFHifiGAN_Vocoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
+{:module, NSFHifiGAN_Vocoder, <<70, 79, 82, 49, 0, 0, 11, ...>>, ...}
 ```
 
 **Post-process** (tensor to audio)
@@ -531,7 +556,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, TensorToWave, <<70, 79, 82, 49, 0, 0, 16, ...>>, ...}
+{:module, TensorToWave, <<70, 79, 82, 49, 0, 0, 15, ...>>, ...}
 ```
 
 ## Build Pipeline and Prepare to Demo
@@ -602,7 +627,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 29, ...>>, ...}
+{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 28, ...>>, ...}
 ```
 
 ```elixir
@@ -628,125 +653,85 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-[error: :already_exists, error: :already_exists, error: :already_exists, error: :already_exists]
+[:ok, :ok, :ok, :ok]
 ```
 
 Run Workflow
 
 ```elixir
-## Variance Model
+defmodule QixuanPipeline do
+  require Logger
 
-# Duration Predict
-:ok = Orchid.Symbiont.register(
-  :duration_linguistic,
-  {Orchid.Symbiont.OrtexRunner, [name: :duration_linguistic, path: Path.join([model_root_path | model_config.predict_map.maybe_duration.linguistic.path])]}
-)
+  def load_models(model_root_path, model_config) do
+    Logger.info("Loading DiffSinger models...")
 
-:ok = Orchid.Symbiont.register(
-  :duration_predict,
-  {Orchid.Symbiont.OrtexRunner, [name: :duration_predict, path: Path.join([model_root_path | model_config.predict_map.maybe_duration.duration.path])]}
-)
+    models =[
+      {:duration_linguistic, model_config.predict_map.maybe_duration.linguistic.path},
+      {:duration_predict,    model_config.predict_map.maybe_duration.duration.path},
+      {:pitch_linguistic,    model_config.predict_map.maybe_pitch.linguistic.path},
+      {:pitch_predict,       model_config.predict_map.maybe_pitch.predict.path},
+      {:variance_linguistic, model_config.variance.linguistic.path},
+      {:variance,            model_config.variance.variance.path},
+      {:acoustic,            model_config.acoustic.infer.path},
+      {:vocoder,             model_config.vocoder.path}
+    ]
 
-%{maybe_lang_dict: duration_lang_dict, phoneme_dict: duration_phoneme_dict} = model_config.predict_map.maybe_duration.phonemes
+    for {name, rel_path} <- models do
+      path = Path.join([model_root_path] ++ rel_path)
+      :ok = Orchid.Symbiont.register(name, {Orchid.Symbiont.OrtexRunner, [name: name, path: path]})
+    end
 
-duration_steps = [
-  {
-    DurationPredictEncoder,
-    :words, [:duration_lang, :duration_phoneme, :word_division, :word_duration, :duration_ph_midi],
-    [lang_dict: duration_lang_dict, phoneme_dict: duration_phoneme_dict]
-  },
-  {
-    PredictDuration,
-    [:duration_lang, :duration_phoneme, :word_division, :word_duration, :duration_ph_midi], :phoneme_duration_predict,
-    extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]
-  }
-]
+    Logger.info("All models loaded successfully.")
+    :ok
+  end
 
-# Pitch Predict
-:ok = Orchid.Symbiont.register(
-  :pitch_linguistic,
-  {Orchid.Symbiont.OrtexRunner, [name: :pitch_linguistic, path: Path.join([model_root_path | model_config.predict_map.maybe_pitch.linguistic.path])]}
-)
+  def build_recipe(model_config) do
+    injector = [extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]]
 
-:ok = Orchid.Symbiont.register(
-  :pitch_predict,
-  {Orchid.Symbiont.OrtexRunner, [name: :pitch_predict, path: Path.join([model_root_path | model_config.predict_map.maybe_pitch.predict.path])]}
-)
+    dur_dict   = model_config.predict_map.maybe_duration.phonemes
+    pitch_dict = model_config.predict_map.maybe_pitch.phonemes
+    var_dict   = model_config.variance.phonemes
+    sample_rate = model_config.vocoder.maybe_config["sample_rate"]
 
-%{maybe_lang_dict: pitch_lang_dict, phoneme_dict: pitch_phoneme_dict} = model_config.predict_map.maybe_pitch.phonemes
+    duration_steps =[
+      {DurationPredictEncoder, :words,[:duration_lang, :duration_phoneme, :word_division, :word_duration, :duration_ph_midi],[lang_dict: dur_dict.maybe_lang_dict, phoneme_dict: dur_dict.phoneme_dict]},
+      {PredictDuration,[:duration_lang, :duration_phoneme, :word_division, :word_duration, :duration_ph_midi], 
+        :phoneme_duration_predict, injector}
+    ]
 
-pitch_steps = [
-  {
-    PitchPredictEncoder, :words, [:pitch_lang, :pitch_phoneme, :word_duration_from_pitch, :pitch_ph_midi],
-    [lang_dict: pitch_lang_dict, phoneme_dict: pitch_phoneme_dict]
-  },
-  {
-    PredictPitch, [:pitch_lang, :pitch_phoneme, :phoneme_duration_predict, :pitch_ph_midi], :pitch_pred_midi,
-    extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]
-  },
-  {fn %Orchid.Param{payload: midi_pred}, _opts ->
-    {:ok, midi_pred
-      |> Nx.backend_transfer(Nx.BinaryBackend)
-      |> Nx.add(-69.0)
-      |> Nx.divide(12.0)
-      |> then(&Nx.pow(2.0, &1))
-      |> Nx.multiply(440)
-      |> then(fn converted_f0 ->
-           Nx.select(Nx.less(Nx.backend_transfer(midi_pred, Nx.BinaryBackend), 0.0), Nx.tensor(0.0), converted_f0)
-         end)
-      |> then(&Orchid.Param.new(:f0, :tensor, &1))} end, :pitch_pred_midi, :pitch_pred, []}
-]
+    pitch_steps = [
+      {PitchPredictEncoder, :words,[:pitch_lang, :pitch_phoneme, :word_duration_from_pitch, :pitch_ph_midi],[lang_dict: pitch_dict.maybe_lang_dict, phoneme_dict: pitch_dict.phoneme_dict]},
+      {PredictPitch,[:pitch_lang, :pitch_phoneme, :phoneme_duration_predict, :pitch_ph_midi], 
+        :pitch_pred_midi, injector},
+      {MIDIToPitch, :pitch_pred_midi, :pitch_pred}
+    ]
 
-# Variance
-%{maybe_lang_dict: variance_lang_dict, phoneme_dict: variance_phoneme_dict} = model_config.variance.phonemes
+    variance_steps = [
+      {VarianceEncoder, :words,[:variance_lang, :variance_phoneme, :word_duration_from_variance, :variance_ph_midi],[lang_dict: var_dict.maybe_lang_dict, phoneme_dict: var_dict.phoneme_dict]},
+      {VarianceModel,[:variance_lang, :variance_phoneme, :phoneme_duration_predict, :pitch_pred_midi],[:breathiness_pred, :voice_pred], injector}
+    ]
 
-:ok = Orchid.Symbiont.register(
-  :variance_linguistic,
-  {Orchid.Symbiont.OrtexRunner, [name: :variance_linguistic, path: Path.join([model_root_path | model_config.variance.linguistic.path])]}
-)
+    acoustic_step =[
+      {Acoustic,[:variance_lang, :variance_phoneme, :phoneme_duration_predict, :pitch_pred, :breathiness_pred, :voice_pred], 
+        :mel, injector}
+    ]
 
-:ok = Orchid.Symbiont.register(
-  :variance,
-  {Orchid.Symbiont.OrtexRunner, [name: :variance, path: Path.join([model_root_path | model_config.variance.variance.path])]}
-)
+    vocoder_step = [
+      {NSFHifiGAN_Vocoder,[:mel, :pitch_pred], :wave_tensor, injector},
+      {TensorToWave, :wave_tensor, :audio,[sample_rate: sample_rate]}
+    ]
 
-variance_steps = [
-  {
-    VarianceEncoder, :words, [:variance_lang, :variance_phoneme, :word_duration_from_variance, :variance_ph_midi],
-    lang_dict: variance_lang_dict, phoneme_dict: variance_phoneme_dict
-  },
-  {
-    VarianceModel, [:variance_lang, :variance_phoneme, :phoneme_duration_predict, :pitch_pred_midi], [:breathiness_pred, :voice_pred],
-    extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]
-  }
-]
+    all_steps = duration_steps ++ pitch_steps ++ variance_steps ++ acoustic_step ++ vocoder_step
 
-## Acoustic Model
-:ok = Orchid.Symbiont.register(
-  :acoustic,
-  {Orchid.Symbiont.OrtexRunner, [name: :acoustic, path: Path.join([model_root_path | model_config.acoustic.infer.path])]}
-)
+    Orchid.Recipe.new(all_steps)
+  end
+end
 
-acoustic_step = [
-  {Acoustic, [:variance_lang, :variance_phoneme, :phoneme_duration_predict, :pitch_pred, :breathiness_pred, :voice_pred], :mel, extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]}
-]
 
-## Vocoder
-:ok = Orchid.Symbiont.register(
-  :vocoder,
-  {Orchid.Symbiont.OrtexRunner, [name: :vocoder, path: Path.join([model_root_path | model_config.vocoder.path])]}
-)
+QixuanPipeline.load_models(model_root_path, model_config)
 
-vocoder_step = [
-  {NSFHifiGAN_Vocoder, [:mel, :pitch_pred], :wave_tensor, extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]}
-]
+recipe = QixuanPipeline.build_recipe(model_config)
 
-final = [
-  {TensorToWave, :wave_tensor, :audio, sample_rate: model_config.vocoder.maybe_config["sample_rate"]}
-]
-
-## Run
-recipe = Orchid.Recipe.new(duration_steps ++ pitch_steps ++ variance_steps ++ acoustic_step ++ vocoder_step ++ final)
 inputs = [
   %Orchid.Param{name: :words, payload: [
     {[{"zh", "AP"}], 10, 0},
@@ -778,23 +763,27 @@ Logger.info "Used #{elapse / 1000}ms."
 
 ```
 
-09:02:57.428 [debug] [Symbiont] Inference took 5.427ms via provider [:cpu]
+13:46:41.617 [info] Loading DiffSinger models...
 
-09:02:57.430 [debug] [Symbiont] Inference took 2.15ms via provider [:cpu]
+13:46:41.617 [info] All models loaded successfully.
 
-09:02:57.440 [debug] [Symbiont] Inference took 8.396ms via provider [:cpu]
+13:46:41.627 [debug] [Symbiont] Inference took 9.113ms via provider [:cpu]
 
-09:02:58.334 [debug] [Symbiont] Inference took 889.446ms via provider [:cpu]
+13:46:41.632 [debug] [Symbiont] Inference took 4.608ms via provider [:cpu]
 
-09:02:58.338 [debug] [Symbiont] Inference took 3.481ms via provider [:cpu]
+13:46:41.651 [debug] [Symbiont] Inference took 18.124ms via provider [:cpu]
 
-09:02:58.916 [debug] [Symbiont] Inference took 570.572ms via provider [:cpu]
+13:46:42.594 [debug] [Symbiont] Inference took 937.164ms via provider [:cpu]
 
-09:03:01.618 [debug] [Symbiont] Inference took 2705.407ms via provider [:cpu]
+13:46:42.599 [debug] [Symbiont] Inference took 4.3ms via provider [:cpu]
 
-09:03:02.719 [debug] [Symbiont] Inference took 1099.98ms via provider [:cpu]
+13:46:43.243 [debug] [Symbiont] Inference took 636.723ms via provider [:cpu]
 
-09:03:02.789 [info] Used 5368.933ms.
+13:46:46.066 [debug] [Symbiont] Inference took 2823.27ms via provider [:cpu]
+
+13:46:47.169 [debug] [Symbiont] Inference took 1102.336ms via provider [:cpu]
+
+13:46:47.237 [info] Used 5620.019ms.
 ```
 
 <!-- livebook:{"output":true} -->
