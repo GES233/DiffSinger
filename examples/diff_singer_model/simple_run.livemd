@@ -393,7 +393,8 @@ defmodule VarianceModel do
             voice_noise,
             retake,
             steps
-          }}
+          }},
+        :infinity
       )
 
     {:ok, [
@@ -472,7 +473,8 @@ defmodule Acoustic do
             velocity,
             depth,
             steps
-          }}
+          }},
+        :infinity
       )
 
     {:ok, Orchid.Param.new(:mel, :payload, mel)}
@@ -569,54 +571,48 @@ defmodule Orchid.Livebook.GanttTracker do
     Agent.start_link(fn ->[] end, name: __MODULE__)
   end
 
-  def handle_event([:orchid, :step, :start], measurements, meta, _config) do
-    start_ms = System.convert_time_unit(measurements.system_time, :native, :microsecond) / 1000.0
-    
-    Agent.update(__MODULE__, fn state -> 
-      [{meta, :start, start_ms} | state]
-    end)
-  end
+  def handle_event([:orchid, :step, status], measurements, meta, _config) do
+    run_id = List.first(Process.get(:"$callers")) || self()
+    run_id_str = inspect(run_id)
 
-  def handle_event([:orchid, :step, status], measurements, meta, _config) 
-      when status in [:done, :exception, :special] do
-    duration_ms = System.convert_time_unit(measurements.duration, :native, :microsecond) / 1000.0
+    time_val = if status == :start, do: measurements.system_time, else: measurements.duration
 
-    Agent.update(__MODULE__, fn state ->[{meta, status, duration_ms} | state]
+    Agent.update(__MODULE__, fn state ->[{run_id_str, status, time_val, meta} | state]
     end)
   end
 
   def get_spans() do
     events = Agent.get(__MODULE__, & &1) |> Enum.reverse()
 
-    {_, spans} = Enum.reduce(events, {%{},[]}, fn 
-      {meta, :start, start_ms}, {pending, spans} ->
-        sig = {meta.impl, meta.in_keys, meta.out_keys}
-        {Map.put(pending, sig, {start_ms, meta}), spans}
+        {_, spans} = Enum.reduce(events, {%{},[]}, fn
+      {run_id, :start, sys_time, meta}, {pending, spans} ->
+        start_ms = System.convert_time_unit(sys_time, :native, :microsecond) / 1000.0
+        sig = {run_id, meta.impl, meta.in_keys, meta.out_keys}
+        {Map.put(pending, sig, start_ms), spans}
 
-      {meta, status, duration_ms}, {pending, spans} ->
-        sig = {meta.impl, meta.in_keys, meta.out_keys}
+      {run_id, status, duration, meta}, {pending, spans} when status in[:done, :exception, :special] ->
+        duration_ms = System.convert_time_unit(duration, :native, :microsecond) / 1000.0
+        sig = {run_id, meta.impl, meta.in_keys, meta.out_keys}
+        
         case Map.pop(pending, sig) do
-          {{start_ms, _meta}, new_pending} ->
-            impl_name = 
-              if is_function(meta.impl) do
-                "Anonymous Function"
-              else
-                inspect(meta.impl) |> String.split(".") |> List.last()
-              end
+          {start_ms, new_pending} when not is_nil(start_ms) ->
+            impl_name = if is_function(meta.impl), do: "Anonymous", else: inspect(meta.impl) |> String.split(".") |> List.last()
+            out_keys = inspect(meta.out_keys) |> String.slice(0..14) |> Kernel.<>("...")
+            
             span = %{
-              step: "#{impl_name}",
+              run_id: run_id,
+              step: "#{impl_name}(#{out_keys})",
               start: start_ms,
               end: start_ms + duration_ms,
               visual_end: start_ms + max(duration_ms, 10.0),
               duration: duration_ms,
               status: status
             }
-
-            {new_pending,[span | spans]}
-          {nil, ^pending} ->
-            {pending, spans}
+            {new_pending, [span | spans]}
+          {nil, ^pending} -> {pending, spans}
         end
     end)
+    
     spans
   end
 
@@ -627,7 +623,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 28, ...>>, ...}
+{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 29, ...>>, ...}
 ```
 
 ```elixir
@@ -763,27 +759,41 @@ Logger.info "Used #{elapse / 1000}ms."
 
 ```
 
-13:46:41.617 [info] Loading DiffSinger models...
+14:42:57.019 [info] Loading DiffSinger models...
 
-13:46:41.617 [info] All models loaded successfully.
+14:42:57.023 [info] All models loaded successfully.
 
-13:46:41.627 [debug] [Symbiont] Inference took 9.113ms via provider [:cpu]
+14:42:57.024 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.2798130424.2264662018.125731>,
+ {:put_chars, :unicode,
+  "Failed to write log message to stdout, trying stderr\n"}}
 
-13:46:41.632 [debug] [Symbiont] Inference took 4.608ms via provider [:cpu]
+14:42:57.024 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n14:42:57.022 [error] Writer crashed (:\""
+    (kernel 10.4.1) logger_h_common.erl:433: :logger_h_common.string_to_binary/1
+    (kernel 10.4.1) logger_h_common.erl:399: :logger_h_common.do_log_to_binary/2
+    (kernel 10.4.1) logger_h_common.erl:180: :logger_h_common.log/2
+    (kernel 10.4.1) logger_backend.erl:54: :logger_backend.call_handlers/3
+    (kernel 10.4.1) user_drv.erl:581: :user_drv.server/3
+    (stdlib 7.1) gen_statem.erl:3748: :gen_statem.loop_state_callback/11
+    (stdlib 7.1) proc_lib.erl:333: :proc_lib.init_p_do_apply/3
 
-13:46:41.651 [debug] [Symbiont] Inference took 18.124ms via provider [:cpu]
 
-13:46:42.594 [debug] [Symbiont] Inference took 937.164ms via provider [:cpu]
+14:42:57.236 [debug] [Symbiont] Inference took 9.728ms via provider [:cpu]
 
-13:46:42.599 [debug] [Symbiont] Inference took 4.3ms via provider [:cpu]
+14:42:57.238 [debug] [Symbiont] Inference took 1.536ms via provider [:cpu]
 
-13:46:43.243 [debug] [Symbiont] Inference took 636.723ms via provider [:cpu]
+14:42:57.592 [debug] [Symbiont] Inference took 8.806ms via provider [:cpu]
 
-13:46:46.066 [debug] [Symbiont] Inference took 2823.27ms via provider [:cpu]
+14:42:58.660 [debug] [Symbiont] Inference took 986.214ms via provider [:cpu]
 
-13:46:47.169 [debug] [Symbiont] Inference took 1102.336ms via provider [:cpu]
+14:42:58.818 [debug] [Symbiont] Inference took 4.71ms via provider [:cpu]
 
-13:46:47.237 [info] Used 5620.019ms.
+14:42:59.445 [debug] [Symbiont] Inference took 612.352ms via provider [:cpu]
+
+14:43:02.839 [debug] [Symbiont] Inference took 2934.272ms via provider [:cpu]
+
+14:43:04.373 [debug] [Symbiont] Inference took 1445.068ms via provider [:cpu]
+
+14:43:04.441 [info] Used 7415.5ms.
 ```
 
 <!-- livebook:{"output":true} -->
@@ -910,19 +920,21 @@ boundary_layer =
 ```elixir
 File.write!("E:/final.wav", results.audio.payload)
 
-audio_html = """
-<div style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; width: fit-content; background: #f8fafc;">
-  <strong>Qixuan DiffSinger Output</strong>
-  <div>Two Tigers (Liang Zhi Lao Hu)</div>
-  <br/><br/>
-  <audio controls autoplay>
-    <source src="data:audio/wav;base64,#{Base.encode64(results.audio.payload)}" type="audio/wav">
-    Your browser does not support the audio element.
-  </audio>
-</div>
-"""
+Kino.Audio.new(results.audio.payload, :wav)
 
-Kino.HTML.new(audio_html)
+# audio_html = """
+# <div style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; width: fit-content; background: #f8fafc;">
+#   <strong>Qixuan DiffSinger Output</strong>
+#   <div>Two Tigers (Liang Zhi Lao Hu)</div>
+#   <br/><br/>
+#   <audio controls autoplay>
+#     <source src="data:audio/wav;base64,#{Base.encode64(results.audio.payload)}" type="audio/wav">
+#     Your browser does not support the audio element.
+#   </audio>
+# </div>
+# """
+
+# Kino.HTML.new(audio_html)
 
 ```
 
@@ -931,5 +943,139 @@ Kino.HTML.new(audio_html)
 Vl.new(width: 800, height: 400, title: "Output Analysis (Mel Spectrum + F0 + Phoneme Duration)")
 |> Vl.resolve(:scale, y: :independent)
 |> Vl.layers([mel_layer, f0_layer, boundary_layer])
+|> Kino.VegaLite.new()
+```
+
+## Multiple Pipeline
+
+```elixir
+Kino.start_child({Orchid.Livebook.GanttTracker,[]})
+Orchid.Livebook.GanttTracker.clear()
+
+pipeline_tasks = 
+  for _ <- 1..3 do
+    Task.async(fn ->
+      Orchid.run(recipe, inputs, executor_and_opts: {Orchid.Executor.Async,[]})
+    end)
+  end
+
+
+Task.await_many(pipeline_tasks, :infinity)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+
+14:43:05.899 [debug] [Symbiont] Inference took 6.348ms via provider [:cpu]
+
+14:43:05.906 [debug] [Symbiont] Inference took 6.348ms via provider [:cpu]
+
+14:43:05.906 [debug] [Symbiont] Inference took 6.86ms via provider [:cpu]
+
+14:43:05.910 [debug] [Symbiont] Inference took 3.481ms via provider [:cpu]
+
+14:43:05.914 [debug] [Symbiont] Inference took 7.987ms via provider [:cpu]
+
+14:43:05.924 [debug] [Symbiont] Inference took 17.92ms via provider [:cpu]
+
+14:43:05.926 [debug] [Symbiont] Inference took 11.98ms via provider [:cpu]
+
+14:43:05.932 [debug] [Symbiont] Inference took 7.884ms via provider [:cpu]
+
+14:43:05.955 [debug] [Symbiont] Inference took 15.667ms via provider [:cpu]
+
+14:43:06.920 [debug] [Symbiont] Inference took 996.454ms via provider [:cpu]
+
+14:43:06.930 [debug] [Symbiont] Inference took 10.547ms via provider [:cpu]
+
+14:43:07.877 [debug] [Symbiont] Inference took 935.219ms via provider [:cpu]
+
+14:43:08.243 [debug] [Symbiont] Inference took 1324.032ms via provider [:cpu]
+
+14:43:08.252 [debug] [Symbiont] Inference took 7.27ms via provider [:cpu]
+
+14:43:09.842 [debug] [Symbiont] Inference took 1576.345ms via provider [:cpu]
+
+14:43:10.317 [debug] [Symbiont] Inference took 2072.678ms via provider [:cpu]
+
+14:43:10.326 [debug] [Symbiont] Inference took 9.216ms via provider [:cpu]
+
+14:43:11.038 [debug] [Symbiont] Inference took 697.753ms via provider [:cpu]
+
+14:43:11.625 [debug] [Symbiont] Inference took 3751.628ms via provider [:cpu]
+
+14:43:12.882 [debug] [Symbiont] Inference took 1251.635ms via provider [:cpu]
+
+14:43:14.437 [debug] [Symbiont] Inference took 2812.518ms via provider [:cpu]
+
+14:43:15.677 [debug] [Symbiont] Inference took 1235.968ms via provider [:cpu]
+
+14:43:17.236 [debug] [Symbiont] Inference took 2796.748ms via provider [:cpu]
+
+14:43:18.365 [debug] [Symbiont] Inference took 1125.785ms via provider [:cpu]
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[
+  ok: %{
+    words: %Orchid.Param{
+      name: :words,
+      type: nil,
+      payload: [
+        {[{"zh", "AP"}], 10, 0},
+        {[{"zh", "zh/l"}, {"zh", "zh/iang"}], 40, 60},
+        {[{"zh", "zh/zh"}, {"zh", "zh/i"}], 40, 62},
+        {[{"zh", "zh/l"}, {"zh", "zh/ao"}], 40, 64},
+        {[{"zh", "zh/h"}, {"zh", "zh/u"}], 40, 60},
+        {[{"zh", "AP"}], 1, 0},
+        {[{"zh", "zh/l"}, {"zh", "zh/iang"}], 40, 60},
+        {[{"zh", "zh/zh"}, {"zh", "zh/i"}], 40, 62},
+        {[{"zh", "zh/l"}, {"zh", "zh/ao"}], 40, 64},
+        {[{"zh", "zh/h"}, {"zh", "zh/u"}], 40, 60}
+      ],
+      metadata: %{}
+    },
+    ...
+  },
+  ...
+]
+```
+
+```elixir
+alias VegaLite, as: Vl
+
+spans = Orchid.Livebook.GanttTracker.get_spans()
+min_start = spans |> Enum.map(& &1.start) |> Enum.min(fn -> 0 end)
+
+chart_data = 
+  Enum.map(spans, fn span ->
+    %{
+      "run_id" => span.run_id,
+      "step" => span.step,
+      "start" => span.start - min_start,
+      "end" => span.end - min_start,
+      "duration" => Float.round(span.duration, 2),
+      "status" => Atom.to_string(span.status)
+    }
+  end)
+
+Vl.new(width: 650, height: 250, title: "Concurrent Orchid Workflows")
+|> Vl.data_from_values(chart_data)
+|> Vl.encode_field(:row, "run_id", type: :nominal, title: "Pipeline Instance (PID)")
+|> Vl.mark(:bar, corner_radius: 4, height: 20)
+|> Vl.encode_field(:y, "step",
+     type: :nominal,
+     title: nil,
+     sort: [field: "start", op: "min"],
+     axis: [labelLimit: 300]
+   )
+|> Vl.encode_field(:x, "start", type: :quantitative, title: "Global Time (ms)")
+|> Vl.encode_field(:x2, "end")
+|> Vl.encode_field(:color, "status", type: :nominal, scale: [range: ["#2eb82e", "#d9534f"]])
+|> Vl.encode_field(:tooltip, "duration", type: :quantitative, title: "Duration (ms)")
+|> Vl.resolve(:scale, x: :shared)
 |> Kino.VegaLite.new()
 ```
