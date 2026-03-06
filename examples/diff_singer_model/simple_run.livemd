@@ -494,7 +494,6 @@ end
 defmodule TensorToWave do
   use Orchid.Step
 
-  # 
    def run(%Orchid.Param{payload: wave_tensor}, opts) do
     pcm_data =
       wave_tensor
@@ -536,6 +535,103 @@ end
 ```
 
 ## Build Pipeline and Prepare to Demo
+
+```elixir
+defmodule Orchid.Livebook.GanttTracker do
+  use Agent
+
+  def start_link(_) do
+    Agent.start_link(fn ->[] end, name: __MODULE__)
+  end
+
+  def handle_event([:orchid, :step, :start], measurements, meta, _config) do
+    start_ms = System.convert_time_unit(measurements.system_time, :native, :microsecond) / 1000.0
+    
+    Agent.update(__MODULE__, fn state -> 
+      [{meta, :start, start_ms} | state]
+    end)
+  end
+
+  def handle_event([:orchid, :step, status], measurements, meta, _config) 
+      when status in [:done, :exception, :special] do
+    duration_ms = System.convert_time_unit(measurements.duration, :native, :microsecond) / 1000.0
+
+    Agent.update(__MODULE__, fn state ->[{meta, status, duration_ms} | state]
+    end)
+  end
+
+  def get_spans() do
+    events = Agent.get(__MODULE__, & &1) |> Enum.reverse()
+
+    {_, spans} = Enum.reduce(events, {%{},[]}, fn 
+      {meta, :start, start_ms}, {pending, spans} ->
+        sig = {meta.impl, meta.in_keys, meta.out_keys}
+        {Map.put(pending, sig, {start_ms, meta}), spans}
+
+      {meta, status, duration_ms}, {pending, spans} ->
+        sig = {meta.impl, meta.in_keys, meta.out_keys}
+        case Map.pop(pending, sig) do
+          {{start_ms, _meta}, new_pending} ->
+            impl_name = 
+              if is_function(meta.impl) do
+                "Anonymous Function"
+              else
+                inspect(meta.impl) |> String.split(".") |> List.last()
+              end
+            span = %{
+              step: "#{impl_name}",
+              start: start_ms,
+              end: start_ms + duration_ms,
+              visual_end: start_ms + max(duration_ms, 10.0),
+              duration: duration_ms,
+              status: status
+            }
+
+            {new_pending,[span | spans]}
+          {nil, ^pending} ->
+            {pending, spans}
+        end
+    end)
+    spans
+  end
+
+  def clear(), do: Agent.update(__MODULE__, fn _ ->[] end)
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 29, ...>>, ...}
+```
+
+```elixir
+Kino.start_child({Orchid.Livebook.GanttTracker, []})
+
+events =[
+  {[:orchid, :step, :start], "start"},
+  {[:orchid, :step, :done], "done"},
+  {[:orchid, :step, :exception], "exception"},
+  {[:orchid, :step, :special], "special"}
+]
+
+for {event, suffix} <- events do
+  :telemetry.attach(
+    "orchid-gantt-#{suffix}",
+    event,
+    &Orchid.Livebook.GanttTracker.handle_event/4,
+    nil
+  )
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+[error: :already_exists, error: :already_exists, error: :already_exists, error: :already_exists]
+```
+
+Run Workflow
 
 ```elixir
 ## Variance Model
@@ -667,6 +763,9 @@ inputs = [
     {[{"zh", "zh/h"}, {"zh", "zh/u"}], 40, 60}
   ]},
 ]
+
+Orchid.Livebook.GanttTracker.clear()
+
 {elapse, {:ok, results}} = :timer.tc(&Orchid.run/2, [recipe, inputs], :microsecond)
 
 require Logger
@@ -679,23 +778,23 @@ Logger.info "Used #{elapse / 1000}ms."
 
 ```
 
-16:50:18.367 [debug] [Symbiont] Inference took 4.915ms via provider [:cpu]
+09:02:57.428 [debug] [Symbiont] Inference took 5.427ms via provider [:cpu]
 
-16:50:18.369 [debug] [Symbiont] Inference took 1.74ms via provider [:cpu]
+09:02:57.430 [debug] [Symbiont] Inference took 2.15ms via provider [:cpu]
 
-16:50:18.389 [debug] [Symbiont] Inference took 19.046ms via provider [:cpu]
+09:02:57.440 [debug] [Symbiont] Inference took 8.396ms via provider [:cpu]
 
-16:50:19.253 [debug] [Symbiont] Inference took 858.418ms via provider [:cpu]
+09:02:58.334 [debug] [Symbiont] Inference took 889.446ms via provider [:cpu]
 
-16:50:19.257 [debug] [Symbiont] Inference took 3.379ms via provider [:cpu]
+09:02:58.338 [debug] [Symbiont] Inference took 3.481ms via provider [:cpu]
 
-16:50:19.925 [debug] [Symbiont] Inference took 660.479ms via provider [:cpu]
+09:02:58.916 [debug] [Symbiont] Inference took 570.572ms via provider [:cpu]
 
-16:50:22.617 [debug] [Symbiont] Inference took 2691.684ms via provider [:cpu]
+09:03:01.618 [debug] [Symbiont] Inference took 2705.407ms via provider [:cpu]
 
-16:50:23.674 [debug] [Symbiont] Inference took 1055.948ms via provider [:cpu]
+09:03:02.719 [debug] [Symbiont] Inference took 1099.98ms via provider [:cpu]
 
-16:50:23.735 [info] Used 5373.129ms.
+09:03:02.789 [info] Used 5368.933ms.
 ```
 
 <!-- livebook:{"output":true} -->
@@ -703,6 +802,38 @@ Logger.info "Used #{elapse / 1000}ms."
 ```
 :ok
 ```
+
+Execution Timeline:
+
+```elixir
+alias VegaLite, as: Vl
+
+spans = Orchid.Livebook.GanttTracker.get_spans()
+min_start = spans |> Enum.map(& &1.start) |> Enum.min(fn -> 0 end)
+
+chart_data =
+  Enum.map(spans, fn span ->
+    %{
+      "step" => span.step,
+      "start" => span.start - min_start,
+      "end" => span.visual_end - min_start,
+      "duration" => Float.round(span.duration, 2),
+      "status" => Atom.to_string(span.status)
+    }
+  end)
+
+Vl.new(width: 650, height: 250, title: "Orchid Workflow Execution Timeline")
+|> Vl.data_from_values(chart_data)
+|> Vl.mark(:bar, corner_radius: 4, height: 20)
+|> Vl.encode_field(:y, "step", type: :nominal, title: "Steps", sort: [field: "start", op: "min"], axis: [labelLimit: 400])
+|> Vl.encode_field(:x, "start", type: :quantitative, title: "Time Offset (ms)")
+|> Vl.encode_field(:x2, "end")
+|> Vl.encode_field(:color, "status", type: :nominal, title: "Status", scale: [range: ["#2eb82e", "#d9534f"]])
+|> Vl.encode_field(:tooltip, "duration", type: :quantitative, title: "Duration (ms)")
+|> Kino.VegaLite.new()
+```
+
+Prepare for the Spectrum demo:
 
 ```elixir
 alias VegaLite, as: Vl
@@ -808,7 +939,7 @@ Kino.HTML.new(audio_html)
 
 ```elixir
 
-Vl.new(width: 800, height: 400, title: "DiffSinger Output Analysis (Acoustic + F0 + Phoneme Duration)")
+Vl.new(width: 800, height: 400, title: "Output Analysis (Mel Spectrum + F0 + Phoneme Duration)")
 |> Vl.resolve(:scale, y: :independent)
 |> Vl.layers([mel_layer, f0_layer, boundary_layer])
 |> Kino.VegaLite.new()
