@@ -1,11 +1,14 @@
 # DiffSingerElixirPoC
 
 ```elixir
+System.shell("$env:HEX_HTTP_TIMEOUT=120")
+
 Mix.install([
-  {:diff_singer, git: "https://github.com/GES233/DiffSinger.git"},
+  {:diff_singer, git: "https://github.com/GES233/DiffSinger.git", branch: "main"},
   {:kino, "~> 0.19.0"},
   {:vega_lite, "~> 0.1.8"},
-  {:kino_vega_lite, "~> 0.1.11"}
+  {:kino_vega_lite, "~> 0.1.11"},
+  {:orchid_stratum, git: "https://github.com/SynapticStrings/OrchidStratum"}
 ])
 
 :telemetry.attach(
@@ -185,9 +188,9 @@ defmodule PredictDuration do
 
     inputs = {phoneme_map, lang_map, word_division, word_duration}
 
-    {:ok, {encoder_out_tensor, mask_tensor}} = Orchid.Symbiont.call(duration_linguistic, {:infer, inputs})
+    {:ok, {encoder_out_tensor, mask_tensor}} = Orchid.Symbiont.call(duration_linguistic, {:infer, inputs}, :infinity)
 
-    {:ok, {result}} = Orchid.Symbiont.call(duration_predict, {:infer, {encoder_out_tensor, mask_tensor, phoneme_midi}})
+    {:ok, {result}} = Orchid.Symbiont.call(duration_predict, {:infer, {encoder_out_tensor, mask_tensor, phoneme_midi}}, :infinity)
 
     {:ok, [
       Orchid.Param.new(:ph_dur_pred, :encoder_out, result)
@@ -228,7 +231,8 @@ defmodule PredictPitch do
     {:ok, {encoder_out, _mask}} =
       Orchid.Symbiont.call(
         handlers.pitch_linguistic,
-        {:infer, {phonemes, languages, ph_dur}}
+        {:infer, {phonemes, languages, ph_dur}},
+        :infinity
       )
 
     total_frames =
@@ -281,7 +285,8 @@ defmodule PredictPitch do
             expr,
             retake,
             steps
-          }}
+          }},
+        :infinity
       )
 
     {:ok, Orchid.Param.new(:pitch_pred, :payload, pitch_pred)}
@@ -564,6 +569,84 @@ end
 ## Build Pipeline and Prepare to Demo
 
 ```elixir
+defmodule QixuanPipeline do
+  require Logger
+
+  def load_models(model_root_path, model_config) do
+    Logger.info("Loading DiffSinger models...")
+
+    models =[
+      {:duration_linguistic, model_config.predict_map.maybe_duration.linguistic.path},
+      {:duration_predict,    model_config.predict_map.maybe_duration.duration.path},
+      {:pitch_linguistic,    model_config.predict_map.maybe_pitch.linguistic.path},
+      {:pitch_predict,       model_config.predict_map.maybe_pitch.predict.path},
+      {:variance_linguistic, model_config.variance.linguistic.path},
+      {:variance,            model_config.variance.variance.path},
+      {:acoustic,            model_config.acoustic.infer.path},
+      {:vocoder,             model_config.vocoder.path}
+    ]
+
+    for {name, rel_path} <- models do
+      path = Path.join([model_root_path] ++ rel_path)
+      :ok = Orchid.Symbiont.register(name, {Orchid.Symbiont.OrtexRunner, [name: name, path: path]})
+    end
+
+    Logger.info("All models loaded successfully.")
+    :ok
+  end
+
+  def build_recipe(model_config) do
+    injector = [extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]]
+
+    dur_dict   = model_config.predict_map.maybe_duration.phonemes
+    pitch_dict = model_config.predict_map.maybe_pitch.phonemes
+    var_dict   = model_config.variance.phonemes
+    sample_rate = model_config.vocoder.maybe_config["sample_rate"]
+
+    duration_steps =[
+      {DurationPredictEncoder, :words,[:duration_lang, :duration_phoneme, :word_division, :word_duration, :duration_ph_midi],[lang_dict: dur_dict.maybe_lang_dict, phoneme_dict: dur_dict.phoneme_dict]},
+      {PredictDuration,[:duration_lang, :duration_phoneme, :word_division, :word_duration, :duration_ph_midi], 
+        :phoneme_duration_predict, injector}
+    ]
+
+    pitch_steps = [
+      {PitchPredictEncoder, :words,[:pitch_lang, :pitch_phoneme, :word_duration_from_pitch, :pitch_ph_midi],[lang_dict: pitch_dict.maybe_lang_dict, phoneme_dict: pitch_dict.phoneme_dict]},
+      {PredictPitch,[:pitch_lang, :pitch_phoneme, :phoneme_duration_predict, :pitch_ph_midi], 
+        :pitch_pred_midi, injector},
+      {MIDIToPitch, :pitch_pred_midi, :pitch_pred}
+    ]
+
+    variance_steps = [
+      {VarianceEncoder, :words,[:variance_lang, :variance_phoneme, :word_duration_from_variance, :variance_ph_midi],[lang_dict: var_dict.maybe_lang_dict, phoneme_dict: var_dict.phoneme_dict]},
+      {VarianceModel,[:variance_lang, :variance_phoneme, :phoneme_duration_predict, :pitch_pred_midi],[:breathiness_pred, :voice_pred], injector}
+    ]
+
+    acoustic_step =[
+      {Acoustic,[:variance_lang, :variance_phoneme, :phoneme_duration_predict, :pitch_pred, :breathiness_pred, :voice_pred], 
+        :mel, injector}
+    ]
+
+    vocoder_step = [
+      {NSFHifiGAN_Vocoder,[:mel, :pitch_pred], :wave_tensor, injector},
+      {TensorToWave, :wave_tensor, :audio,[sample_rate: sample_rate]}
+    ]
+
+    all_steps = duration_steps ++ pitch_steps ++ variance_steps ++ acoustic_step ++ vocoder_step
+
+    Orchid.Recipe.new(all_steps)
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, QixuanPipeline, <<70, 79, 82, 49, 0, 0, 39, ...>>, ...}
+```
+
+Add a tracker
+
+```elixir
 defmodule Orchid.Livebook.GanttTracker do
   use Agent
 
@@ -652,78 +735,127 @@ end
 [:ok, :ok, :ok, :ok]
 ```
 
+```elixir
+defmodule MermaidRenderer do
+
+  def render(%Orchid.Recipe{} = recipe) do
+    mermaid_code = generate_mermaid(recipe.steps)
+
+    Kino.Mermaid.new(mermaid_code)
+  end
+
+  defp generate_mermaid(steps) do
+    header = "graph TD\n"
+
+    body =
+      steps
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {step, idx} ->
+        {impl, in_keys, out_keys, _opts} = Orchid.Step.ensure_full_step(step)
+
+        step_id = "step_#{idx}"
+        step_name = format_impl(impl)
+        step_node = ~s|    #{step_id}["⚙️ #{step_name}"]:::stepClass|
+
+        in_edges =
+          in_keys
+          |> normalize_keys()
+          |> Enum.map(fn k -> ~s|    #{k}(["#{k}"]) -.-> #{step_id}| end)
+
+        out_edges =
+          out_keys
+          |> normalize_keys()
+          |> Enum.map(fn k -> ~s|    #{step_id} ==> #{k}(["#{k}"])| end)
+
+        [step_node] ++ in_edges ++ out_edges
+      end)
+      |> Enum.uniq()
+      |> Enum.join("\n")
+
+
+    styles = """
+
+        classDef stepClass fill:#2eb82e,stroke:#fff,stroke-width:2px,color:#fff;
+    """
+
+    header <> body <> styles
+  end
+
+  defp normalize_keys(keys) do
+    keys
+    |> Orchid.Step.ID.normalize_keys_to_set()
+    |> MapSet.to_list()
+    |> Enum.map(&to_string/1)
+  end
+
+  defp format_impl(impl) when is_function(impl), do: "Anonymous Function"
+  defp format_impl(impl) do
+    inspect(impl) |> String.replace_prefix("Elixir.", "")
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, MermaidRenderer, <<70, 79, 82, 49, 0, 0, 19, ...>>, ...}
+```
+
 Run Workflow
 
 ```elixir
-defmodule QixuanPipeline do
-  require Logger
+defmodule MetaStore do
+  @behaviour OrchidStratum.MetaStorage
 
-  def load_models(model_root_path, model_config) do
-    Logger.info("Loading DiffSinger models...")
+  def init, do: :ets.new(__MODULE__, [:set, :public, :named_table])
 
-    models =[
-      {:duration_linguistic, model_config.predict_map.maybe_duration.linguistic.path},
-      {:duration_predict,    model_config.predict_map.maybe_duration.duration.path},
-      {:pitch_linguistic,    model_config.predict_map.maybe_pitch.linguistic.path},
-      {:pitch_predict,       model_config.predict_map.maybe_pitch.predict.path},
-      {:variance_linguistic, model_config.variance.linguistic.path},
-      {:variance,            model_config.variance.variance.path},
-      {:acoustic,            model_config.acoustic.infer.path},
-      {:vocoder,             model_config.vocoder.path}
-    ]
-
-    for {name, rel_path} <- models do
-      path = Path.join([model_root_path] ++ rel_path)
-      :ok = Orchid.Symbiont.register(name, {Orchid.Symbiont.OrtexRunner, [name: name, path: path]})
+  def get(key) do
+    case :ets.lookup(__MODULE__, key) do
+      [{^key, val}] -> {:ok, val}
+      [] -> :miss
     end
+  end
 
-    Logger.info("All models loaded successfully.")
+  def put(key, val) do
+    :ets.insert(__MODULE__, {key, val})
     :ok
   end
 
-  def build_recipe(model_config) do
-    injector = [extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]]
-
-    dur_dict   = model_config.predict_map.maybe_duration.phonemes
-    pitch_dict = model_config.predict_map.maybe_pitch.phonemes
-    var_dict   = model_config.variance.phonemes
-    sample_rate = model_config.vocoder.maybe_config["sample_rate"]
-
-    duration_steps =[
-      {DurationPredictEncoder, :words,[:duration_lang, :duration_phoneme, :word_division, :word_duration, :duration_ph_midi],[lang_dict: dur_dict.maybe_lang_dict, phoneme_dict: dur_dict.phoneme_dict]},
-      {PredictDuration,[:duration_lang, :duration_phoneme, :word_division, :word_duration, :duration_ph_midi], 
-        :phoneme_duration_predict, injector}
-    ]
-
-    pitch_steps = [
-      {PitchPredictEncoder, :words,[:pitch_lang, :pitch_phoneme, :word_duration_from_pitch, :pitch_ph_midi],[lang_dict: pitch_dict.maybe_lang_dict, phoneme_dict: pitch_dict.phoneme_dict]},
-      {PredictPitch,[:pitch_lang, :pitch_phoneme, :phoneme_duration_predict, :pitch_ph_midi], 
-        :pitch_pred_midi, injector},
-      {MIDIToPitch, :pitch_pred_midi, :pitch_pred}
-    ]
-
-    variance_steps = [
-      {VarianceEncoder, :words,[:variance_lang, :variance_phoneme, :word_duration_from_variance, :variance_ph_midi],[lang_dict: var_dict.maybe_lang_dict, phoneme_dict: var_dict.phoneme_dict]},
-      {VarianceModel,[:variance_lang, :variance_phoneme, :phoneme_duration_predict, :pitch_pred_midi],[:breathiness_pred, :voice_pred], injector}
-    ]
-
-    acoustic_step =[
-      {Acoustic,[:variance_lang, :variance_phoneme, :phoneme_duration_predict, :pitch_pred, :breathiness_pred, :voice_pred], 
-        :mel, injector}
-    ]
-
-    vocoder_step = [
-      {NSFHifiGAN_Vocoder,[:mel, :pitch_pred], :wave_tensor, injector},
-      {TensorToWave, :wave_tensor, :audio,[sample_rate: sample_rate]}
-    ]
-
-    all_steps = duration_steps ++ pitch_steps ++ variance_steps ++ acoustic_step ++ vocoder_step
-
-    Orchid.Recipe.new(all_steps)
+  def delete(key) do
+    :ets.delete(__MODULE__, key)
   end
 end
 
+defmodule BlobStore do
+  @behaviour OrchidStratum.BlobStorage
 
+  def init, do: :ets.new(__MODULE__, [:set, :public, :named_table])
+
+  def get(key) do
+    case :ets.lookup(__MODULE__, key) do
+      [{^key, val}] -> {:ok, val}
+      [] -> :miss
+    end
+  end
+
+  def put(key, val) do
+    :ets.insert(__MODULE__, {key, val})
+    :ok
+  end
+
+  def exists?(key) do
+    :ets.member(__MODULE__, key)
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, BlobStore, <<70, 79, 82, 49, 0, 0, 10, ...>>, ...}
+```
+
+```elixir
 QixuanPipeline.load_models(model_root_path, model_config)
 
 recipe = QixuanPipeline.build_recipe(model_config)
@@ -747,7 +879,12 @@ inputs = [
 
 Orchid.Livebook.GanttTracker.clear()
 
-{elapse, {:ok, results}} = :timer.tc(&Orchid.run/2, [recipe, inputs], :microsecond)
+{elapse, {:ok, results}} = :timer.tc(
+  &Orchid.run/2,
+  [recipe, inputs
+  ],
+  :microsecond
+)
 
 require Logger
 Logger.info "Used #{elapse / 1000}ms."
@@ -759,15 +896,11 @@ Logger.info "Used #{elapse / 1000}ms."
 
 ```
 
-14:42:57.019 [info] Loading DiffSinger models...
+11:36:58.950 [info] Loading DiffSinger models...
 
-14:42:57.023 [info] All models loaded successfully.
+11:36:58.954 [info] All models loaded successfully.
 
-14:42:57.024 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.2798130424.2264662018.125731>,
- {:put_chars, :unicode,
-  "Failed to write log message to stdout, trying stderr\n"}}
-
-14:42:57.024 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n14:42:57.022 [error] Writer crashed (:\""
+11:36:58.954 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n11:36:58.950 [error] Writer crashed (:\""
     (kernel 10.4.1) logger_h_common.erl:433: :logger_h_common.string_to_binary/1
     (kernel 10.4.1) logger_h_common.erl:399: :logger_h_common.do_log_to_binary/2
     (kernel 10.4.1) logger_h_common.erl:180: :logger_h_common.log/2
@@ -777,29 +910,104 @@ Logger.info "Used #{elapse / 1000}ms."
     (stdlib 7.1) proc_lib.erl:333: :proc_lib.init_p_do_apply/3
 
 
-14:42:57.236 [debug] [Symbiont] Inference took 9.728ms via provider [:cpu]
+11:36:58.954 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.1965452474.127664129.68859>,
+ {:put_chars, :unicode,
+  "Failed to write log message to stdout, trying stderr\n"}}
 
-14:42:57.238 [debug] [Symbiont] Inference took 1.536ms via provider [:cpu]
+11:36:59.109 [debug] [Symbiont] Inference took 7.065ms via provider [:cpu]
 
-14:42:57.592 [debug] [Symbiont] Inference took 8.806ms via provider [:cpu]
+11:36:59.111 [debug] [Symbiont] Inference took 1.74ms via provider [:cpu]
 
-14:42:58.660 [debug] [Symbiont] Inference took 986.214ms via provider [:cpu]
+11:36:59.386 [debug] [Symbiont] Inference took 8.601ms via provider [:cpu]
 
-14:42:58.818 [debug] [Symbiont] Inference took 4.71ms via provider [:cpu]
+11:37:00.365 [debug] [Symbiont] Inference took 924.979ms via provider [:cpu]
 
-14:42:59.445 [debug] [Symbiont] Inference took 612.352ms via provider [:cpu]
+11:37:00.506 [debug] [Symbiont] Inference took 4.198ms via provider [:cpu]
 
-14:43:02.839 [debug] [Symbiont] Inference took 2934.272ms via provider [:cpu]
+11:37:01.067 [debug] [Symbiont] Inference took 553.062ms via provider [:cpu]
 
-14:43:04.373 [debug] [Symbiont] Inference took 1445.068ms via provider [:cpu]
+11:37:04.168 [debug] [Symbiont] Inference took 2681.753ms via provider [:cpu]
 
-14:43:04.441 [info] Used 7415.5ms.
+11:37:05.605 [debug] [Symbiont] Inference took 1363.558ms via provider [:cpu]
+
+11:37:05.677 [info] Used 6723.379ms.
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
 :ok
+```
+
+Show Graph
+
+```elixir
+MermaidRenderer.render recipe
+```
+
+<!-- livebook:{"output":true} -->
+
+```mermaid
+graph TD
+    step_0["⚙️ DurationPredictEncoder"]:::stepClass
+    words(["words"]) -.-> step_0
+    step_0 ==> word_division(["word_division"])
+    step_0 ==> word_duration(["word_duration"])
+    step_0 ==> duration_lang(["duration_lang"])
+    step_0 ==> duration_phoneme(["duration_phoneme"])
+    step_0 ==> duration_ph_midi(["duration_ph_midi"])
+    step_1["⚙️ PredictDuration"]:::stepClass
+    word_division(["word_division"]) -.-> step_1
+    word_duration(["word_duration"]) -.-> step_1
+    duration_lang(["duration_lang"]) -.-> step_1
+    duration_phoneme(["duration_phoneme"]) -.-> step_1
+    duration_ph_midi(["duration_ph_midi"]) -.-> step_1
+    step_1 ==> phoneme_duration_predict(["phoneme_duration_predict"])
+    step_2["⚙️ PitchPredictEncoder"]:::stepClass
+    words(["words"]) -.-> step_2
+    step_2 ==> pitch_lang(["pitch_lang"])
+    step_2 ==> pitch_phoneme(["pitch_phoneme"])
+    step_2 ==> word_duration_from_pitch(["word_duration_from_pitch"])
+    step_2 ==> pitch_ph_midi(["pitch_ph_midi"])
+    step_3["⚙️ PredictPitch"]:::stepClass
+    phoneme_duration_predict(["phoneme_duration_predict"]) -.-> step_3
+    pitch_lang(["pitch_lang"]) -.-> step_3
+    pitch_phoneme(["pitch_phoneme"]) -.-> step_3
+    pitch_ph_midi(["pitch_ph_midi"]) -.-> step_3
+    step_3 ==> pitch_pred_midi(["pitch_pred_midi"])
+    step_4["⚙️ MIDIToPitch"]:::stepClass
+    pitch_pred_midi(["pitch_pred_midi"]) -.-> step_4
+    step_4 ==> pitch_pred(["pitch_pred"])
+    step_5["⚙️ VarianceEncoder"]:::stepClass
+    words(["words"]) -.-> step_5
+    step_5 ==> variance_lang(["variance_lang"])
+    step_5 ==> variance_phoneme(["variance_phoneme"])
+    step_5 ==> word_duration_from_variance(["word_duration_from_variance"])
+    step_5 ==> variance_ph_midi(["variance_ph_midi"])
+    step_6["⚙️ VarianceModel"]:::stepClass
+    phoneme_duration_predict(["phoneme_duration_predict"]) -.-> step_6
+    pitch_pred_midi(["pitch_pred_midi"]) -.-> step_6
+    variance_lang(["variance_lang"]) -.-> step_6
+    variance_phoneme(["variance_phoneme"]) -.-> step_6
+    step_6 ==> voice_pred(["voice_pred"])
+    step_6 ==> breathiness_pred(["breathiness_pred"])
+    step_7["⚙️ Acoustic"]:::stepClass
+    pitch_pred(["pitch_pred"]) -.-> step_7
+    voice_pred(["voice_pred"]) -.-> step_7
+    phoneme_duration_predict(["phoneme_duration_predict"]) -.-> step_7
+    variance_lang(["variance_lang"]) -.-> step_7
+    variance_phoneme(["variance_phoneme"]) -.-> step_7
+    breathiness_pred(["breathiness_pred"]) -.-> step_7
+    step_7 ==> mel(["mel"])
+    step_8["⚙️ NSFHifiGAN_Vocoder"]:::stepClass
+    pitch_pred(["pitch_pred"]) -.-> step_8
+    mel(["mel"]) -.-> step_8
+    step_8 ==> wave_tensor(["wave_tensor"])
+    step_9["⚙️ TensorToWave"]:::stepClass
+    wave_tensor(["wave_tensor"]) -.-> step_9
+    step_9 ==> audio(["audio"])
+    classDef stepClass fill:#2eb82e,stroke:#fff,stroke-width:2px,color:#fff;
+
 ```
 
 Execution Timeline:
@@ -821,7 +1029,7 @@ chart_data =
     }
   end)
 
-Vl.new(width: 650, height: 250, title: "Orchid Workflow Execution Timeline")
+Vl.new(width: 600, height: 250, title: "Orchid Workflow Execution Timeline")
 |> Vl.data_from_values(chart_data)
 |> Vl.mark(:bar, corner_radius: 4, height: 20)
 |> Vl.encode_field(:y, "step", type: :nominal, title: "Steps", sort: [field: "start", op: "min"], axis: [labelLimit: 400])
@@ -832,7 +1040,7 @@ Vl.new(width: 650, height: 250, title: "Orchid Workflow Execution Timeline")
 |> Kino.VegaLite.new()
 ```
 
-Prepare for the Spectrum demo:
+Prepare for the demo:
 
 ```elixir
 alias VegaLite, as: Vl
@@ -921,25 +1129,9 @@ boundary_layer =
 File.write!("E:/final.wav", results.audio.payload)
 
 Kino.Audio.new(results.audio.payload, :wav)
-
-# audio_html = """
-# <div style="padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; width: fit-content; background: #f8fafc;">
-#   <strong>Qixuan DiffSinger Output</strong>
-#   <div>Two Tigers (Liang Zhi Lao Hu)</div>
-#   <br/><br/>
-#   <audio controls autoplay>
-#     <source src="data:audio/wav;base64,#{Base.encode64(results.audio.payload)}" type="audio/wav">
-#     Your browser does not support the audio element.
-#   </audio>
-# </div>
-# """
-
-# Kino.HTML.new(audio_html)
-
 ```
 
 ```elixir
-
 Vl.new(width: 800, height: 400, title: "Output Analysis (Mel Spectrum + F0 + Phoneme Duration)")
 |> Vl.resolve(:scale, y: :independent)
 |> Vl.layers([mel_layer, f0_layer, boundary_layer])
@@ -951,97 +1143,40 @@ Vl.new(width: 800, height: 400, title: "Output Analysis (Mel Spectrum + F0 + Pho
 ```elixir
 Kino.start_child({Orchid.Livebook.GanttTracker,[]})
 Orchid.Livebook.GanttTracker.clear()
+# MetaStore.init()
+# BlobStore.init()
+
+recipe_with_cache = Orchid.Recipe.walk(
+  recipe.steps,
+  fn step -> case step do {impl, i, o} -> {impl, i, o, [cache: true]}; {impl, i, o, old_opts} -> {impl, i, o, old_opts ++ [cache: true]} end
+  end
+)
 
 pipeline_tasks = 
   for _ <- 1..3 do
     Task.async(fn ->
-      Orchid.run(recipe, inputs, executor_and_opts: {Orchid.Executor.Async,[]})
+      Orchid.run(recipe_with_cache, inputs, [executor_and_opts: {Orchid.Executor.Async, []},
+      baggage: %{
+        meta_store: MetaStore,
+        blob_store: BlobStore
+      },
+      global_hooks_stack: [OrchidStratum.BypassHook]
+    ])
     end)
   end
 
 
-Task.await_many(pipeline_tasks, :infinity)
+{elapse, _res} = fn -> Task.await_many(pipeline_tasks, :infinity) end
+|> :timer.tc
+
+# Est: T = 4 * Concurrent + 3
+elapse / 1000_000
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
-
-14:43:05.899 [debug] [Symbiont] Inference took 6.348ms via provider [:cpu]
-
-14:43:05.906 [debug] [Symbiont] Inference took 6.348ms via provider [:cpu]
-
-14:43:05.906 [debug] [Symbiont] Inference took 6.86ms via provider [:cpu]
-
-14:43:05.910 [debug] [Symbiont] Inference took 3.481ms via provider [:cpu]
-
-14:43:05.914 [debug] [Symbiont] Inference took 7.987ms via provider [:cpu]
-
-14:43:05.924 [debug] [Symbiont] Inference took 17.92ms via provider [:cpu]
-
-14:43:05.926 [debug] [Symbiont] Inference took 11.98ms via provider [:cpu]
-
-14:43:05.932 [debug] [Symbiont] Inference took 7.884ms via provider [:cpu]
-
-14:43:05.955 [debug] [Symbiont] Inference took 15.667ms via provider [:cpu]
-
-14:43:06.920 [debug] [Symbiont] Inference took 996.454ms via provider [:cpu]
-
-14:43:06.930 [debug] [Symbiont] Inference took 10.547ms via provider [:cpu]
-
-14:43:07.877 [debug] [Symbiont] Inference took 935.219ms via provider [:cpu]
-
-14:43:08.243 [debug] [Symbiont] Inference took 1324.032ms via provider [:cpu]
-
-14:43:08.252 [debug] [Symbiont] Inference took 7.27ms via provider [:cpu]
-
-14:43:09.842 [debug] [Symbiont] Inference took 1576.345ms via provider [:cpu]
-
-14:43:10.317 [debug] [Symbiont] Inference took 2072.678ms via provider [:cpu]
-
-14:43:10.326 [debug] [Symbiont] Inference took 9.216ms via provider [:cpu]
-
-14:43:11.038 [debug] [Symbiont] Inference took 697.753ms via provider [:cpu]
-
-14:43:11.625 [debug] [Symbiont] Inference took 3751.628ms via provider [:cpu]
-
-14:43:12.882 [debug] [Symbiont] Inference took 1251.635ms via provider [:cpu]
-
-14:43:14.437 [debug] [Symbiont] Inference took 2812.518ms via provider [:cpu]
-
-14:43:15.677 [debug] [Symbiont] Inference took 1235.968ms via provider [:cpu]
-
-14:43:17.236 [debug] [Symbiont] Inference took 2796.748ms via provider [:cpu]
-
-14:43:18.365 [debug] [Symbiont] Inference took 1125.785ms via provider [:cpu]
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-[
-  ok: %{
-    words: %Orchid.Param{
-      name: :words,
-      type: nil,
-      payload: [
-        {[{"zh", "AP"}], 10, 0},
-        {[{"zh", "zh/l"}, {"zh", "zh/iang"}], 40, 60},
-        {[{"zh", "zh/zh"}, {"zh", "zh/i"}], 40, 62},
-        {[{"zh", "zh/l"}, {"zh", "zh/ao"}], 40, 64},
-        {[{"zh", "zh/h"}, {"zh", "zh/u"}], 40, 60},
-        {[{"zh", "AP"}], 1, 0},
-        {[{"zh", "zh/l"}, {"zh", "zh/iang"}], 40, 60},
-        {[{"zh", "zh/zh"}, {"zh", "zh/i"}], 40, 62},
-        {[{"zh", "zh/l"}, {"zh", "zh/ao"}], 40, 64},
-        {[{"zh", "zh/h"}, {"zh", "zh/u"}], 40, 60}
-      ],
-      metadata: %{}
-    },
-    ...
-  },
-  ...
-]
+0.003481
 ```
 
 ```elixir
@@ -1055,14 +1190,14 @@ chart_data =
     %{
       "run_id" => span.run_id,
       "step" => span.step,
-      "start" => span.start - min_start,
-      "end" => span.end - min_start,
+      "start" => (span.start - min_start) / 1000,
+      "end" => (span.end - min_start) / 1000,
       "duration" => Float.round(span.duration, 2),
       "status" => Atom.to_string(span.status)
     }
   end)
 
-Vl.new(width: 650, height: 250, title: "Concurrent Orchid Workflows")
+Vl.new(width: 600, height: 250, title: "Concurrent Orchid Workflows")
 |> Vl.data_from_values(chart_data)
 |> Vl.encode_field(:row, "run_id", type: :nominal, title: "Pipeline Instance (PID)")
 |> Vl.mark(:bar, corner_radius: 4, height: 20)
@@ -1078,4 +1213,27 @@ Vl.new(width: 650, height: 250, title: "Concurrent Orchid Workflows")
 |> Vl.encode_field(:tooltip, "duration", type: :quantitative, title: "Duration (ms)")
 |> Vl.resolve(:scale, x: :shared)
 |> Kino.VegaLite.new()
+```
+
+```elixir
+{elpase_with_cache, {:ok, res}} = :timer.tc(
+  &Orchid.run/3, [recipe_with_cache, inputs, [executor_and_opts: {Orchid.Executor.Async, []},
+      baggage: %{
+        meta_store: MetaStore,
+        blob_store: BlobStore
+      },
+      global_hooks_stack: [OrchidStratum.BypassHook]
+]])
+
+IO.puts "elapse when use cache: #{elpase_with_cache / 1000} ms."
+
+{:ref, _blob, key} = res[:audio].payload
+{:ok, cached_audio} = BlobStore.get(key)
+Kino.Audio.new(cached_audio, :wav)
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+elapse when use cache: 1.638 ms.
 ```
