@@ -159,7 +159,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, VarianceEncoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
+{:module, VarianceEncoder, <<70, 79, 82, 49, 0, 0, 11, ...>>, ...}
 ```
 
 ## Variance Model
@@ -706,7 +706,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 29, ...>>, ...}
+{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 30, ...>>, ...}
 ```
 
 ```elixir
@@ -804,58 +804,6 @@ end
 Run Workflow
 
 ```elixir
-defmodule MetaStore do
-  @behaviour OrchidStratum.MetaStorage
-
-  def init, do: :ets.new(__MODULE__, [:set, :public, :named_table])
-
-  def get(key) do
-    case :ets.lookup(__MODULE__, key) do
-      [{^key, val}] -> {:ok, val}
-      [] -> :miss
-    end
-  end
-
-  def put(key, val) do
-    :ets.insert(__MODULE__, {key, val})
-    :ok
-  end
-
-  def delete(key) do
-    :ets.delete(__MODULE__, key)
-  end
-end
-
-defmodule BlobStore do
-  @behaviour OrchidStratum.BlobStorage
-
-  def init, do: :ets.new(__MODULE__, [:set, :public, :named_table])
-
-  def get(key) do
-    case :ets.lookup(__MODULE__, key) do
-      [{^key, val}] -> {:ok, val}
-      [] -> :miss
-    end
-  end
-
-  def put(key, val) do
-    :ets.insert(__MODULE__, {key, val})
-    :ok
-  end
-
-  def exists?(key) do
-    :ets.member(__MODULE__, key)
-  end
-end
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-{:module, BlobStore, <<70, 79, 82, 49, 0, 0, 10, ...>>, ...}
-```
-
-```elixir
 QixuanPipeline.load_models(model_root_path, model_config)
 
 recipe = QixuanPipeline.build_recipe(model_config)
@@ -896,11 +844,15 @@ Logger.info "Used #{elapse / 1000}ms."
 
 ```
 
-11:36:58.950 [info] Loading DiffSinger models...
+15:27:36.848 [info] Loading DiffSinger models...
 
-11:36:58.954 [info] All models loaded successfully.
+15:27:36.854 [info] All models loaded successfully.
 
-11:36:58.954 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n11:36:58.950 [error] Writer crashed (:\""
+15:27:36.857 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.2317751992.1773404168.204634>,
+ {:put_chars, :unicode,
+  "Failed to write log message to stdout, trying stderr\n"}}
+
+15:27:36.857 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n15:27:36.852 [error] Writer crashed (:\""
     (kernel 10.4.1) logger_h_common.erl:433: :logger_h_common.string_to_binary/1
     (kernel 10.4.1) logger_h_common.erl:399: :logger_h_common.do_log_to_binary/2
     (kernel 10.4.1) logger_h_common.erl:180: :logger_h_common.log/2
@@ -910,27 +862,23 @@ Logger.info "Used #{elapse / 1000}ms."
     (stdlib 7.1) proc_lib.erl:333: :proc_lib.init_p_do_apply/3
 
 
-11:36:58.954 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.1965452474.127664129.68859>,
- {:put_chars, :unicode,
-  "Failed to write log message to stdout, trying stderr\n"}}
+15:27:37.067 [debug] [Symbiont] Inference took 9.83ms via provider [:cpu]
 
-11:36:59.109 [debug] [Symbiont] Inference took 7.065ms via provider [:cpu]
+15:27:37.069 [debug] [Symbiont] Inference took 1.843ms via provider [:cpu]
 
-11:36:59.111 [debug] [Symbiont] Inference took 1.74ms via provider [:cpu]
+15:27:37.360 [debug] [Symbiont] Inference took 6.758ms via provider [:cpu]
 
-11:36:59.386 [debug] [Symbiont] Inference took 8.601ms via provider [:cpu]
+15:27:38.364 [debug] [Symbiont] Inference took 949.043ms via provider [:cpu]
 
-11:37:00.365 [debug] [Symbiont] Inference took 924.979ms via provider [:cpu]
+15:27:38.524 [debug] [Symbiont] Inference took 5.836ms via provider [:cpu]
 
-11:37:00.506 [debug] [Symbiont] Inference took 4.198ms via provider [:cpu]
+15:27:39.130 [debug] [Symbiont] Inference took 593.408ms via provider [:cpu]
 
-11:37:01.067 [debug] [Symbiont] Inference took 553.062ms via provider [:cpu]
+15:27:42.372 [debug] [Symbiont] Inference took 2739.404ms via provider [:cpu]
 
-11:37:04.168 [debug] [Symbiont] Inference took 2681.753ms via provider [:cpu]
+15:27:43.870 [debug] [Symbiont] Inference took 1424.384ms via provider [:cpu]
 
-11:37:05.605 [debug] [Symbiont] Inference took 1363.558ms via provider [:cpu]
-
-11:37:05.677 [info] Used 6723.379ms.
+15:27:43.946 [info] Used 7091.916ms.
 ```
 
 <!-- livebook:{"output":true} -->
@@ -1140,22 +1088,16 @@ Vl.new(width: 800, height: 400, title: "Output Analysis (Mel Spectrum + F0 + Pho
 
 ## Multiple Pipeline
 
+Try concurrent.
+
 ```elixir
 Kino.start_child({Orchid.Livebook.GanttTracker,[]})
 Orchid.Livebook.GanttTracker.clear()
-# MetaStore.init()
-# BlobStore.init()
-
-recipe_with_cache = Orchid.Recipe.walk(
-  recipe.steps,
-  fn step -> case step do {impl, i, o} -> {impl, i, o, [cache: true]}; {impl, i, o, old_opts} -> {impl, i, o, old_opts ++ [cache: true]} end
-  end
-)
 
 pipeline_tasks = 
   for _ <- 1..3 do
     Task.async(fn ->
-      Orchid.run(recipe_with_cache, inputs, [executor_and_opts: {Orchid.Executor.Async, []},
+      Orchid.run(recipe, inputs, [executor_and_opts: {Orchid.Executor.Async, []},
       baggage: %{
         meta_store: MetaStore,
         blob_store: BlobStore
@@ -1176,7 +1118,60 @@ elapse / 1000_000
 <!-- livebook:{"output":true} -->
 
 ```
-0.003481
+
+15:27:45.406 [debug] [Symbiont] Inference took 5.836ms via provider [:cpu]
+
+15:27:45.408 [debug] [Symbiont] Inference took 2.355ms via provider [:cpu]
+
+15:27:45.419 [debug] [Symbiont] Inference took 10.035ms via provider [:cpu]
+
+15:27:45.423 [debug] [Symbiont] Inference took 17.305ms via provider [:cpu]
+
+15:27:45.425 [debug] [Symbiont] Inference took 1.638ms via provider [:cpu]
+
+15:27:45.449 [debug] [Symbiont] Inference took 25.907ms via provider [:cpu]
+
+15:27:45.449 [debug] [Symbiont] Inference took 24.064ms via provider [:cpu]
+
+15:27:45.456 [debug] [Symbiont] Inference took 6.963ms via provider [:cpu]
+
+15:27:45.472 [debug] [Symbiont] Inference took 15.462ms via provider [:cpu]
+
+15:27:46.428 [debug] [Symbiont] Inference took 1000.448ms via provider [:cpu]
+
+15:27:46.436 [debug] [Symbiont] Inference took 6.246ms via provider [:cpu]
+
+15:27:47.291 [debug] [Symbiont] Inference took 846.95ms via provider [:cpu]
+
+15:27:47.708 [debug] [Symbiont] Inference took 1277.747ms via provider [:cpu]
+
+15:27:47.719 [debug] [Symbiont] Inference took 10.649ms via provider [:cpu]
+
+15:27:49.770 [debug] [Symbiont] Inference took 2034.892ms via provider [:cpu]
+
+15:27:50.105 [debug] [Symbiont] Inference took 2396.979ms via provider [:cpu]
+
+15:27:50.118 [debug] [Symbiont] Inference took 12.902ms via provider [:cpu]
+
+15:27:51.014 [debug] [Symbiont] Inference took 885.555ms via provider [:cpu]
+
+15:27:51.911 [debug] [Symbiont] Inference took 4620.288ms via provider [:cpu]
+
+15:27:53.506 [debug] [Symbiont] Inference took 1593.446ms via provider [:cpu]
+
+15:27:55.337 [debug] [Symbiont] Inference took 3427.43ms via provider [:cpu]
+
+15:27:56.750 [debug] [Symbiont] Inference took 1411.072ms via provider [:cpu]
+
+15:27:58.416 [debug] [Symbiont] Inference took 3077.529ms via provider [:cpu]
+
+15:27:59.528 [debug] [Symbiont] Inference took 1112.268ms via provider [:cpu]
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+14.209126
 ```
 
 ```elixir
@@ -1215,7 +1210,81 @@ Vl.new(width: 600, height: 250, title: "Concurrent Orchid Workflows")
 |> Kino.VegaLite.new()
 ```
 
+## Cache
+
 ```elixir
+defmodule MetaStore do
+  @behaviour OrchidStratum.MetaStorage
+
+  def init, do: :ets.new(__MODULE__, [:set, :public, :named_table])
+
+  def get(key) do
+    case :ets.lookup(__MODULE__, key) do
+      [{^key, val}] -> {:ok, val}
+      [] -> :miss
+    end
+  end
+
+  def put(key, val) do
+    :ets.insert(__MODULE__, {key, val})
+    :ok
+  end
+
+  def delete(key) do
+    :ets.delete(__MODULE__, key)
+  end
+end
+
+defmodule BlobStore do
+  @behaviour OrchidStratum.BlobStorage
+
+  def init, do: :ets.new(__MODULE__, [:set, :public, :named_table])
+
+  def get(key) do
+    case :ets.lookup(__MODULE__, key) do
+      [{^key, val}] -> {:ok, val}
+      [] -> :miss
+    end
+  end
+
+  def put(key, val) do
+    :ets.insert(__MODULE__, {key, val})
+    :ok
+  end
+
+  def exists?(key) do
+    :ets.member(__MODULE__, key)
+  end
+end
+```
+
+<!-- livebook:{"output":true} -->
+
+```
+{:module, BlobStore, <<70, 79, 82, 49, 0, 0, 10, ...>>, ...}
+```
+
+```elixir
+MetaStore.init()
+BlobStore.init()
+
+recipe_with_cache = Orchid.Recipe.walk(
+  recipe.steps,
+  fn step -> case step do {impl, i, o} -> {impl, i, o, [cache: true]}; {impl, i, o, old_opts} -> {impl, i, o, old_opts ++ [cache: true, cache_keys: Keyword.keys(old_opts)]} end
+  end
+)
+
+{elpase_1st, {:ok, _res}} = :timer.tc(
+  &Orchid.run/3, [recipe_with_cache, inputs, [executor_and_opts: {Orchid.Executor.Async, []},
+      baggage: %{
+        meta_store: MetaStore,
+        blob_store: BlobStore
+      },
+      global_hooks_stack: [OrchidStratum.BypassHook]
+]])
+
+IO.puts "elapse when without cache: #{elpase_1st / 1000} ms."
+
 {elpase_with_cache, {:ok, res}} = :timer.tc(
   &Orchid.run/3, [recipe_with_cache, inputs, [executor_and_opts: {Orchid.Executor.Async, []},
       baggage: %{
@@ -1235,5 +1304,22 @@ Kino.Audio.new(cached_audio, :wav)
 <!-- livebook:{"output":true} -->
 
 ```
-elapse when use cache: 1.638 ms.
+
+15:27:59.975 [debug] [Symbiont] Inference took 8.192ms via provider [:cpu]
+
+15:27:59.979 [debug] [Symbiont] Inference took 3.379ms via provider [:cpu]
+
+15:27:59.997 [debug] [Symbiont] Inference took 17.1ms via provider [:cpu]
+
+15:28:00.973 [debug] [Symbiont] Inference took 962.662ms via provider [:cpu]
+
+15:28:00.980 [debug] [Symbiont] Inference took 4.505ms via provider [:cpu]
+
+15:28:01.569 [debug] [Symbiont] Inference took 583.27ms via provider [:cpu]
+
+15:28:04.348 [debug] [Symbiont] Inference took 2780.569ms via provider [:cpu]
+
+15:28:05.468 [debug] [Symbiont] Inference took 1120.87ms via provider [:cpu]
+elapse when without cache: 5575.782 ms.
+elapse when use cache: 3.379 ms.
 ```
