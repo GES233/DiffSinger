@@ -1,14 +1,20 @@
 # DiffSingerElixirPoC
 
 ```elixir
-System.shell("$env:HEX_HTTP_TIMEOUT=120")
+System.shell("mix hex.clean --all")
+System.shell("mix hex.config http_timeout 120")
 
+# If the download fails, you can comment out all the git repositories first,
+#and then install them incrementally one by one
+#after the hex packages are installed.
 Mix.install([
-  {:diff_singer, git: "https://github.com/GES233/DiffSinger.git", branch: "main"},
+  {:orchid, "~> 0.5", override: true},
+  {:diff_singer, git: "https://github.com/GES233/DiffSinger.git"},
+  {:orchid_stratum, git: "https://github.com/SynapticStrings/OrchidStratum.git"},
   {:kino, "~> 0.19.0"},
   {:vega_lite, "~> 0.1.8"},
   {:kino_vega_lite, "~> 0.1.11"},
-  {:orchid_stratum, git: "https://github.com/SynapticStrings/OrchidStratum"}
+  {:kino_benchee, "~> 0.1.0"}
 ])
 
 :telemetry.attach(
@@ -159,7 +165,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, VarianceEncoder, <<70, 79, 82, 49, 0, 0, 11, ...>>, ...}
+{:module, VarianceEncoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
 ```
 
 ## Variance Model
@@ -706,7 +712,7 @@ end
 <!-- livebook:{"output":true} -->
 
 ```
-{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 30, ...>>, ...}
+{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 29, ...>>, ...}
 ```
 
 ```elixir
@@ -844,15 +850,11 @@ Logger.info "Used #{elapse / 1000}ms."
 
 ```
 
-15:27:36.848 [info] Loading DiffSinger models...
+11:55:57.387 [info] Loading DiffSinger models...
 
-15:27:36.854 [info] All models loaded successfully.
+11:55:57.390 [info] All models loaded successfully.
 
-15:27:36.857 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.2317751992.1773404168.204634>,
- {:put_chars, :unicode,
-  "Failed to write log message to stdout, trying stderr\n"}}
-
-15:27:36.857 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n15:27:36.852 [error] Writer crashed (:\""
+11:55:57.392 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n11:55:57.388 [error] Writer crashed (:\""
     (kernel 10.4.1) logger_h_common.erl:433: :logger_h_common.string_to_binary/1
     (kernel 10.4.1) logger_h_common.erl:399: :logger_h_common.do_log_to_binary/2
     (kernel 10.4.1) logger_h_common.erl:180: :logger_h_common.log/2
@@ -862,23 +864,27 @@ Logger.info "Used #{elapse / 1000}ms."
     (stdlib 7.1) proc_lib.erl:333: :proc_lib.init_p_do_apply/3
 
 
-15:27:37.067 [debug] [Symbiont] Inference took 9.83ms via provider [:cpu]
+11:55:57.392 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.2652535936.353632260.93387>,
+ {:put_chars, :unicode,
+  "Failed to write log message to stdout, trying stderr\n"}}
 
-15:27:37.069 [debug] [Symbiont] Inference took 1.843ms via provider [:cpu]
+11:55:57.576 [debug] [Symbiont] Inference took 7.987ms via provider [:cpu]
 
-15:27:37.360 [debug] [Symbiont] Inference took 6.758ms via provider [:cpu]
+11:55:57.579 [debug] [Symbiont] Inference took 3.174ms via provider [:cpu]
 
-15:27:38.364 [debug] [Symbiont] Inference took 949.043ms via provider [:cpu]
+11:55:57.909 [debug] [Symbiont] Inference took 3.686ms via provider [:cpu]
 
-15:27:38.524 [debug] [Symbiont] Inference took 5.836ms via provider [:cpu]
+11:55:58.876 [debug] [Symbiont] Inference took 941.875ms via provider [:cpu]
 
-15:27:39.130 [debug] [Symbiont] Inference took 593.408ms via provider [:cpu]
+11:55:59.022 [debug] [Symbiont] Inference took 3.891ms via provider [:cpu]
 
-15:27:42.372 [debug] [Symbiont] Inference took 2739.404ms via provider [:cpu]
+11:55:59.660 [debug] [Symbiont] Inference took 630.988ms via provider [:cpu]
 
-15:27:43.870 [debug] [Symbiont] Inference took 1424.384ms via provider [:cpu]
+11:56:03.021 [debug] [Symbiont] Inference took 2828.8ms via provider [:cpu]
 
-15:27:43.946 [info] Used 7091.916ms.
+11:56:04.527 [debug] [Symbiont] Inference took 1428.172ms via provider [:cpu]
+
+11:56:04.600 [info] Used 7208.755ms.
 ```
 
 <!-- livebook:{"output":true} -->
@@ -1112,66 +1118,68 @@ pipeline_tasks =
 |> :timer.tc
 
 # Est: T = 4 * Concurrent + 3
-elapse / 1000_000
+Logger.info "Total used #{elapse / 1000_000}s."
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
 
-15:27:45.406 [debug] [Symbiont] Inference took 5.836ms via provider [:cpu]
+12:04:36.546 [debug] [Symbiont] Inference took 7.065ms via provider [:cpu]
 
-15:27:45.408 [debug] [Symbiont] Inference took 2.355ms via provider [:cpu]
+12:04:36.551 [debug] [Symbiont] Inference took 4.096ms via provider [:cpu]
 
-15:27:45.419 [debug] [Symbiont] Inference took 10.035ms via provider [:cpu]
+12:04:36.567 [debug] [Symbiont] Inference took 20.684ms via provider [:cpu]
 
-15:27:45.423 [debug] [Symbiont] Inference took 17.305ms via provider [:cpu]
+12:04:36.571 [debug] [Symbiont] Inference took 19.046ms via provider [:cpu]
 
-15:27:45.425 [debug] [Symbiont] Inference took 1.638ms via provider [:cpu]
+12:04:36.575 [debug] [Symbiont] Inference took 7.577ms via provider [:cpu]
 
-15:27:45.449 [debug] [Symbiont] Inference took 25.907ms via provider [:cpu]
+12:04:36.587 [debug] [Symbiont] Inference took 20.275ms via provider [:cpu]
 
-15:27:45.449 [debug] [Symbiont] Inference took 24.064ms via provider [:cpu]
+12:04:36.595 [debug] [Symbiont] Inference took 19.353ms via provider [:cpu]
 
-15:27:45.456 [debug] [Symbiont] Inference took 6.963ms via provider [:cpu]
+12:04:36.596 [debug] [Symbiont] Inference took 8.294ms via provider [:cpu]
 
-15:27:45.472 [debug] [Symbiont] Inference took 15.462ms via provider [:cpu]
+12:04:36.627 [debug] [Symbiont] Inference took 26.624ms via provider [:cpu]
 
-15:27:46.428 [debug] [Symbiont] Inference took 1000.448ms via provider [:cpu]
+12:04:37.782 [debug] [Symbiont] Inference took 1200.025ms via provider [:cpu]
 
-15:27:46.436 [debug] [Symbiont] Inference took 6.246ms via provider [:cpu]
+12:04:37.793 [debug] [Symbiont] Inference took 10.137ms via provider [:cpu]
 
-15:27:47.291 [debug] [Symbiont] Inference took 846.95ms via provider [:cpu]
+12:04:38.928 [debug] [Symbiont] Inference took 1121.996ms via provider [:cpu]
 
-15:27:47.708 [debug] [Symbiont] Inference took 1277.747ms via provider [:cpu]
+12:04:39.912 [debug] [Symbiont] Inference took 2130.534ms via provider [:cpu]
 
-15:27:47.719 [debug] [Symbiont] Inference took 10.649ms via provider [:cpu]
+12:04:39.932 [debug] [Symbiont] Inference took 19.865ms via provider [:cpu]
 
-15:27:49.770 [debug] [Symbiont] Inference took 2034.892ms via provider [:cpu]
+12:04:42.291 [debug] [Symbiont] Inference took 2346.701ms via provider [:cpu]
 
-15:27:50.105 [debug] [Symbiont] Inference took 2396.979ms via provider [:cpu]
+12:04:42.834 [debug] [Symbiont] Inference took 2921.267ms via provider [:cpu]
 
-15:27:50.118 [debug] [Symbiont] Inference took 12.902ms via provider [:cpu]
+12:04:42.854 [debug] [Symbiont] Inference took 19.353ms via provider [:cpu]
 
-15:27:51.014 [debug] [Symbiont] Inference took 885.555ms via provider [:cpu]
+12:04:44.055 [debug] [Symbiont] Inference took 1187.43ms via provider [:cpu]
 
-15:27:51.911 [debug] [Symbiont] Inference took 4620.288ms via provider [:cpu]
+12:04:44.310 [debug] [Symbiont] Inference took 5380.813ms via provider [:cpu]
 
-15:27:53.506 [debug] [Symbiont] Inference took 1593.446ms via provider [:cpu]
+12:04:45.921 [debug] [Symbiont] Inference took 1610.854ms via provider [:cpu]
 
-15:27:55.337 [debug] [Symbiont] Inference took 3427.43ms via provider [:cpu]
+12:04:47.895 [debug] [Symbiont] Inference took 3584.819ms via provider [:cpu]
 
-15:27:56.750 [debug] [Symbiont] Inference took 1411.072ms via provider [:cpu]
+12:04:49.711 [debug] [Symbiont] Inference took 1815.347ms via provider [:cpu]
 
-15:27:58.416 [debug] [Symbiont] Inference took 3077.529ms via provider [:cpu]
+12:04:51.681 [debug] [Symbiont] Inference took 3786.035ms via provider [:cpu]
 
-15:27:59.528 [debug] [Symbiont] Inference took 1112.268ms via provider [:cpu]
+12:04:52.884 [debug] [Symbiont] Inference took 1203.302ms via provider [:cpu]
+
+12:04:52.999 [info] Total used 16.460596s.
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
-14.209126
+:ok
 ```
 
 ```elixir
@@ -1213,113 +1221,201 @@ Vl.new(width: 600, height: 250, title: "Concurrent Orchid Workflows")
 ## Cache
 
 ```elixir
-defmodule MetaStore do
-  @behaviour OrchidStratum.MetaStorage
+metaref = OrchidStratum.MetaStorage.EtsAdapter.init()
+blobref = OrchidStratum.BlobStorage.EtsAdapter.init()
 
-  def init, do: :ets.new(__MODULE__, [:set, :public, :named_table])
-
-  def get(key) do
-    case :ets.lookup(__MODULE__, key) do
-      [{^key, val}] -> {:ok, val}
-      [] -> :miss
-    end
-  end
-
-  def put(key, val) do
-    :ets.insert(__MODULE__, {key, val})
-    :ok
-  end
-
-  def delete(key) do
-    :ets.delete(__MODULE__, key)
-  end
-end
-
-defmodule BlobStore do
-  @behaviour OrchidStratum.BlobStorage
-
-  def init, do: :ets.new(__MODULE__, [:set, :public, :named_table])
-
-  def get(key) do
-    case :ets.lookup(__MODULE__, key) do
-      [{^key, val}] -> {:ok, val}
-      [] -> :miss
-    end
-  end
-
-  def put(key, val) do
-    :ets.insert(__MODULE__, {key, val})
-    :ok
-  end
-
-  def exists?(key) do
-    :ets.member(__MODULE__, key)
-  end
-end
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-{:module, BlobStore, <<70, 79, 82, 49, 0, 0, 10, ...>>, ...}
-```
-
-```elixir
-MetaStore.init()
-BlobStore.init()
+cache_recipe_opts = [
+  executor_and_opts: {Orchid.Executor.Async, []},
+  baggage: %{
+    meta_store: {OrchidStratum.MetaStorage.EtsAdapter, metaref},
+    blob_store: {OrchidStratum.BlobStorage.EtsAdapter, blobref}
+  },
+  global_hooks_stack: [OrchidStratum.BypassHook]
+]
 
 recipe_with_cache = Orchid.Recipe.walk(
   recipe.steps,
-  fn step -> case step do {impl, i, o} -> {impl, i, o, [cache: true]}; {impl, i, o, old_opts} -> {impl, i, o, old_opts ++ [cache: true, cache_keys: Keyword.keys(old_opts)]} end
+  fn step ->
+    case step do
+      {impl, i, o} -> {impl, i, o, [cache: true]}
+        {impl, i, o, old_opts} ->
+          {impl, i, o, old_opts ++
+            [cache: true,
+              cache_keys: Keyword.keys(old_opts)
+            ]
+          }
+    end
   end
 )
 
-{elpase_1st, {:ok, _res}} = :timer.tc(
-  &Orchid.run/3, [recipe_with_cache, inputs, [executor_and_opts: {Orchid.Executor.Async, []},
-      baggage: %{
-        meta_store: MetaStore,
-        blob_store: BlobStore
-      },
-      global_hooks_stack: [OrchidStratum.BypassHook]
-]])
+# Prewarm
+Orchid.run(recipe_with_cache, inputs, cache_recipe_opts)
 
-IO.puts "elapse when without cache: #{elpase_1st / 1000} ms."
+defmodule BenchmarkRunner do
+  def run_without_cache(recipe, inputs, opts) do
+    Orchid.run(recipe, inputs, opts)
+  end
 
-{elpase_with_cache, {:ok, res}} = :timer.tc(
-  &Orchid.run/3, [recipe_with_cache, inputs, [executor_and_opts: {Orchid.Executor.Async, []},
-      baggage: %{
-        meta_store: MetaStore,
-        blob_store: BlobStore
-      },
-      global_hooks_stack: [OrchidStratum.BypassHook]
-]])
+  def run_with_cache(recipe_with_cache, inputs, opts) do
+    Orchid.run(recipe_with_cache, inputs, opts)
+  end
+end
 
-IO.puts "elapse when use cache: #{elpase_with_cache / 1000} ms."
-
-{:ref, _blob, key} = res[:audio].payload
-{:ok, cached_audio} = BlobStore.get(key)
-Kino.Audio.new(cached_audio, :wav)
+Benchee.run(
+  %{
+    "run_without_cache" => fn ->
+      BenchmarkRunner.run_without_cache(recipe, inputs, [executor_and_opts: {Orchid.Executor.Async, []}]) end,
+    "run_with_cache"    => fn ->
+      BenchmarkRunner.run_with_cache(recipe_with_cache, inputs, cache_recipe_opts) end
+  },
+  time: 3,
+  memory_time: 3,
+  reduction_time: 2
+)
 ```
 
 <!-- livebook:{"output":true} -->
 
 ```
 
-15:27:59.975 [debug] [Symbiont] Inference took 8.192ms via provider [:cpu]
+12:03:56.906 [debug] [Symbiont] Inference took 7.68ms via provider [:cpu]
 
-15:27:59.979 [debug] [Symbiont] Inference took 3.379ms via provider [:cpu]
+12:03:56.911 [debug] [Symbiont] Inference took 4.403ms via provider [:cpu]
 
-15:27:59.997 [debug] [Symbiont] Inference took 17.1ms via provider [:cpu]
+12:03:56.922 [debug] [Symbiont] Inference took 10.444ms via provider [:cpu]
 
-15:28:00.973 [debug] [Symbiont] Inference took 962.662ms via provider [:cpu]
+12:03:57.875 [debug] [Symbiont] Inference took 933.888ms via provider [:cpu]
 
-15:28:00.980 [debug] [Symbiont] Inference took 4.505ms via provider [:cpu]
+12:03:57.880 [debug] [Symbiont] Inference took 4.505ms via provider [:cpu]
 
-15:28:01.569 [debug] [Symbiont] Inference took 583.27ms via provider [:cpu]
+12:03:58.527 [debug] [Symbiont] Inference took 637.644ms via provider [:cpu]
 
-15:28:04.348 [debug] [Symbiont] Inference took 2780.569ms via provider [:cpu]
+12:04:01.423 [debug] [Symbiont] Inference took 2896.281ms via provider [:cpu]
 
-15:28:05.468 [debug] [Symbiont] Inference took 1120.87ms via provider [:cpu]
-elapse when without cache: 5575.782 ms.
-elapse when use cache: 3.379 ms.
+12:04:02.598 [debug] [Symbiont] Inference took 1173.504ms via provider [:cpu]
+Error trying to determine erlang version enoent, falling back to overall OTP version
+Warning: the benchmark run_with_cache is using an evaluated function.
+  Evaluated functions perform slower than compiled functions.
+  You can move the Benchee caller to a function in a module and invoke `Mod.fun()` instead.
+  Alternatively, you can move the benchmark into a benchmark.exs file and run mix run benchmark.exs
+
+Warning: the benchmark run_without_cache is using an evaluated function.
+  Evaluated functions perform slower than compiled functions.
+  You can move the Benchee caller to a function in a module and invoke `Mod.fun()` instead.
+  Alternatively, you can move the benchmark into a benchmark.exs file and run mix run benchmark.exs
+
+Operating System: Windows
+CPU Information: 12th Gen Intel(R) Core(TM) i5-12400
+Number of Available Cores: 12
+Available memory: 31.77 GB
+Elixir 1.19.3
+Erlang 28
+JIT enabled: true
+
+Benchmark suite executing with the following configuration:
+warmup: 2 s
+time: 3 s
+memory time: 3 s
+reduction time: 2 s
+parallel: 1
+inputs: none specified
+Estimated total run time: 20 s
+Excluding outliers: false
+
+Benchmarking run_with_cache ...
+Benchmarking run_without_cache ...
+
+12:04:13.067 [debug] [Symbiont] Inference took 8.499ms via provider [:cpu]
+
+12:04:13.068 [debug] [Symbiont] Inference took 1.843ms via provider [:cpu]
+
+12:04:13.074 [debug] [Symbiont] Inference took 5.427ms via provider [:cpu]
+
+12:04:14.070 [debug] [Symbiont] Inference took 992.051ms via provider [:cpu]
+
+12:04:14.081 [debug] [Symbiont] Inference took 10.444ms via provider [:cpu]
+
+12:04:14.787 [debug] [Symbiont] Inference took 698.47ms via provider [:cpu]
+
+12:04:17.627 [debug] [Symbiont] Inference took 2838.937ms via provider [:cpu]
+
+12:04:18.782 [debug] [Symbiont] Inference took 1153.638ms via provider [:cpu]
+
+12:04:18.872 [debug] [Symbiont] Inference took 7.065ms via provider [:cpu]
+
+12:04:18.875 [debug] [Symbiont] Inference took 2.764ms via provider [:cpu]
+
+12:04:18.893 [debug] [Symbiont] Inference took 17.1ms via provider [:cpu]
+
+12:04:19.936 [debug] [Symbiont] Inference took 1034.649ms via provider [:cpu]
+
+12:04:19.946 [debug] [Symbiont] Inference took 7.475ms via provider [:cpu]
+
+12:04:20.582 [debug] [Symbiont] Inference took 629.555ms via provider [:cpu]
+
+12:04:23.500 [debug] [Symbiont] Inference took 2916.556ms via provider [:cpu]
+
+12:04:24.690 [debug] [Symbiont] Inference took 1189.683ms via provider [:cpu]
+
+12:04:24.768 [debug] [Symbiont] Inference took 5.939ms via provider [:cpu]
+
+12:04:24.770 [debug] [Symbiont] Inference took 1.74ms via provider [:cpu]
+
+12:04:24.782 [debug] [Symbiont] Inference took 11.161ms via provider [:cpu]
+
+12:04:25.754 [debug] [Symbiont] Inference took 966.86ms via provider [:cpu]
+
+12:04:25.762 [debug] [Symbiont] Inference took 6.758ms via provider [:cpu]
+
+12:04:26.397 [debug] [Symbiont] Inference took 625.766ms via provider [:cpu]
+
+12:04:29.282 [debug] [Symbiont] Inference took 2883.993ms via provider [:cpu]
+
+12:04:30.416 [debug] [Symbiont] Inference took 1133.875ms via provider [:cpu]
+
+12:04:30.500 [debug] [Symbiont] Inference took 6.451ms via provider [:cpu]
+
+12:04:30.503 [debug] [Symbiont] Inference took 1.843ms via provider [:cpu]
+
+12:04:30.520 [debug] [Symbiont] Inference took 16.793ms via provider [:cpu]
+
+12:04:31.579 [debug] [Symbiont] Inference took 1051.443ms via provider [:cpu]
+
+12:04:31.587 [debug] [Symbiont] Inference took 6.451ms via provider [:cpu]
+
+12:04:32.247 [debug] [Symbiont] Inference took 652.185ms via provider [:cpu]
+
+12:04:35.146 [debug] [Symbiont] Inference took 2897.715ms via provider [:cpu]
+
+12:04:36.295 [debug] [Symbiont] Inference took 1148.518ms via provider [:cpu]
+Calculating statistics...
+Formatting results...
+
+Name                        ips        average  deviation         median         99th %
+run_with_cache           718.93      0.00139 s   ±105.19%      0.00113 s      0.00363 s
+run_without_cache         0.170         5.90 s     ±0.00%         5.90 s         5.90 s
+
+Comparison: 
+run_with_cache           718.93
+run_without_cache         0.170 - 4239.66x slower +5.90 s
+
+Memory usage statistics:
+
+Name                      average  deviation         median         99th %
+run_with_cache           72.39 KB     ±1.64%       73.34 KB       73.34 KB
+run_without_cache        74.43 KB     ±0.00%       74.43 KB       74.43 KB
+
+Comparison: 
+run_with_cache           73.34 KB
+run_without_cache        74.43 KB - 1.03x memory usage +2.04 KB
+
+Reduction count statistics:
+
+Name                      average  deviation         median         99th %
+run_with_cache             8.73 K     ±0.18%         8.74 K         8.75 K
+run_without_cache          8.87 K     ±0.00%         8.87 K         8.87 K
+
+Comparison: 
+run_with_cache             8.74 K
+run_without_cache          8.87 K - 1.02x reduction count +0.140 K
 ```
