@@ -37,7 +37,7 @@ defmodule DiffSinger.MixProject do
       {:jason, "~> 1.4"},
       # Orchestration
       {:orchid, "~> 0.5"},
-      {:orchid_symbiont, git: "https://github.com/SynapticStrings/OrchidSymbiont.git"},
+      {:orchid_symbiont, "~> 0.1.3"},
     ]
   end
 end
