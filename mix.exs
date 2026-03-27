@@ -37,7 +37,7 @@ defmodule DiffSinger.MixProject do
       {:jason, "~> 1.4"},
       # Orchestration
       {:orchid, "~> 0.5"},
-      {:orchid_symbiont, "~> 0.1.3"},
+      {:orchid_symbiont, "~> 0.2"},
     ]
   end
 end
