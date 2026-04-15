@@ -35,9 +35,11 @@ defmodule DiffSinger.MixProject do
       {:ortex, git: "https://github.com/elixir-nx/ortex"},
       {:yaml_elixir, "~> 2.12"},
       {:jason, "~> 1.4"},
+
       # Orchestration
       {:orchid, "~> 0.5"},
       {:orchid_symbiont, "~> 0.2"},
+      # {:orchid_symbiont, "~> 0.2"},
     ]
   end
 end
