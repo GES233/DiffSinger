@@ -1,16 +1,17 @@
 # DiffSingerElixirPoC
 
 ```elixir
-System.shell("mix hex.clean --all")
-System.shell("mix hex.config http_timeout 120")
+# System.shell("mix hex.clean --all")
+# System.shell("mix hex.config http_timeout 120")
 
 # If the download fails, you can comment out all the git repositories first,
-#and then install them incrementally one by one
-#after the hex packages are installed.
+# and then install them incrementally one by one
+# after the hex packages are installed.
 Mix.install([
-  {:orchid, "~> 0.5", override: true},
+  {:orchid, "~> 0.5"},
   {:diff_singer, git: "https://github.com/GES233/DiffSinger.git"},
-  {:orchid_stratum, git: "https://github.com/SynapticStrings/OrchidStratum.git"},
+  {:orchid_stratum, "~> 0.1"},
+  {:orchid_intervention, "~> 0.1"},
   {:kino, "~> 0.19.0"},
   {:vega_lite, "~> 0.1.8"},
   {:kino_vega_lite, "~> 0.1.11"},
@@ -37,12 +38,6 @@ Here, we take [Qixuan](https://beta.vocadb.net/Ar/147217) v2.5.0 (for OpenUTAU),
 model_root_path = "E:/ProgramAssets/OpenUTAUSingers/Qixuan_v2.5.0_DiffSinger_OpenUtau"
 model_config = DiffSinger.VoiceBank.Config.fetch_overview(model_root_path)
 
-:ok
-```
-
-<!-- livebook:{"output":true} -->
-
-```
 :ok
 ```
 
@@ -90,12 +85,6 @@ end
 
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, CommonEncoder, <<70, 79, 82, 49, 0, 0, 13, ...>>, ...}
-```
-
 ```elixir
 defmodule DurationPredictEncoder do
   use Orchid.Step
@@ -114,12 +103,6 @@ defmodule DurationPredictEncoder do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, DurationPredictEncoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
-```
-
 ```elixir
 defmodule PitchPredictEncoder do
   use Orchid.Step
@@ -135,12 +118,6 @@ defmodule PitchPredictEncoder do
     {:ok, [languages, tokens, word_dur, ph_midi]}
   end
 end
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-{:module, PitchPredictEncoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
 ```
 
 ```elixir
@@ -162,19 +139,13 @@ end
 
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, VarianceEncoder, <<70, 79, 82, 49, 0, 0, 12, ...>>, ...}
-```
-
 ## Variance Model
 
 **Predict Phoneme Duration**:
 
 ```elixir
 defmodule PredictDuration do
-  @behaviour Orchid.Symbiont.Step
+  @behaviour OrchidSymbiont.Step
 
   def required, do: [:duration_linguistic, :duration_predict]
 
@@ -194,9 +165,9 @@ defmodule PredictDuration do
 
     inputs = {phoneme_map, lang_map, word_division, word_duration}
 
-    {:ok, {encoder_out_tensor, mask_tensor}} = Orchid.Symbiont.call(duration_linguistic, {:infer, inputs}, :infinity)
+    {:ok, {encoder_out_tensor, mask_tensor}} = OrchidSymbiont.call(duration_linguistic, {:infer, inputs}, :infinity)
 
-    {:ok, {result}} = Orchid.Symbiont.call(duration_predict, {:infer, {encoder_out_tensor, mask_tensor, phoneme_midi}}, :infinity)
+    {:ok, {result}} = OrchidSymbiont.call(duration_predict, {:infer, {encoder_out_tensor, mask_tensor, phoneme_midi}}, :infinity)
 
     {:ok, [
       Orchid.Param.new(:ph_dur_pred, :encoder_out, result)
@@ -206,17 +177,11 @@ end
 
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, PredictDuration, <<70, 79, 82, 49, 0, 0, 13, ...>>, ...}
-```
-
 **Predict Pitch**:
 
 ```elixir
 defmodule PredictPitch do
-  @behaviour Orchid.Symbiont.Step
+  @behaviour OrchidSymbiont.Step
 
   def required, do: [:pitch_linguistic, :pitch_predict]
 
@@ -235,7 +200,7 @@ defmodule PredictPitch do
       |> Nx.as_type(:s64)
 
     {:ok, {encoder_out, _mask}} =
-      Orchid.Symbiont.call(
+      OrchidSymbiont.call(
         handlers.pitch_linguistic,
         {:infer, {phonemes, languages, ph_dur}},
         :infinity
@@ -278,7 +243,7 @@ defmodule PredictPitch do
       |> Nx.tensor(type: :s64)
 
     {:ok, {pitch_pred}} =
-      Orchid.Symbiont.call(
+      OrchidSymbiont.call(
         handlers.pitch_predict,
         {:infer,
           {
@@ -300,12 +265,6 @@ defmodule PredictPitch do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, PredictPitch, <<70, 79, 82, 49, 0, 0, 18, ...>>, ...}
-```
-
 ```elixir
 defmodule MIDIToPitch do
   use Orchid.Step
@@ -325,17 +284,11 @@ defmodule MIDIToPitch do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, MIDIToPitch, <<70, 79, 82, 49, 0, 0, 13, ...>>, ...}
-```
-
 **Other Variance Params**:
 
 ```elixir
 defmodule VarianceModel do
-  @behaviour Orchid.Symbiont.Step
+  @behaviour OrchidSymbiont.Step
 
   def required, do: [:variance_linguistic, :variance]
 
@@ -357,7 +310,7 @@ defmodule VarianceModel do
       |> Nx.as_type(:s64)
 
     {:ok, {encoder_out, _mask}} =
-      Orchid.Symbiont.call(
+      OrchidSymbiont.call(
         handlers.variance_linguistic,
         {:infer, {phonemes, languages, ph_dur}}
       )
@@ -393,7 +346,7 @@ defmodule VarianceModel do
       |> Nx.tensor(type: :s64)
 
     {:ok, {breath_pred, voice_pred}} =
-      Orchid.Symbiont.call(
+      OrchidSymbiont.call(
         handlers.variance,
         {:infer,
           {
@@ -416,19 +369,13 @@ defmodule VarianceModel do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, VarianceModel, <<70, 79, 82, 49, 0, 0, 18, ...>>, ...}
-```
-
 ## Acoustic Model and Vocoder
 
 **Acoustic Model**:
 
 ```elixir
 defmodule Acoustic do
-  @behaviour Orchid.Symbiont.Step
+  @behaviour OrchidSymbiont.Step
 
   def required, do: [:acoustic]
 
@@ -470,7 +417,7 @@ defmodule Acoustic do
       |> Nx.tensor(type: :f32)
 
     {:ok, {mel}} =
-      Orchid.Symbiont.call(
+      OrchidSymbiont.call(
         handlers.acoustic,
         {:infer,
           {
@@ -493,17 +440,11 @@ defmodule Acoustic do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, Acoustic, <<70, 79, 82, 49, 0, 0, 15, ...>>, ...}
-```
-
 **Vocoder**:
 
 ```elixir
 defmodule NSFHifiGAN_Vocoder do
-  @behaviour Orchid.Symbiont.Step
+  @behaviour OrchidSymbiont.Step
 
   def required, do: [:vocoder]
 
@@ -513,17 +454,11 @@ defmodule NSFHifiGAN_Vocoder do
     _opts
   ) do
 
-    {:ok, {audio}} = Orchid.Symbiont.call(handlers.vocoder, {:infer, {mel, f0}})
+    {:ok, {audio}} = OrchidSymbiont.call(handlers.vocoder, {:infer, {mel, f0}})
 
     {:ok, Orchid.Param.new(:audio, :payload, audio)}
   end
 end
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-{:module, NSFHifiGAN_Vocoder, <<70, 79, 82, 49, 0, 0, 11, ...>>, ...}
 ```
 
 **Post-process** (tensor to audio)
@@ -566,12 +501,6 @@ defmodule TensorToWave do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, TensorToWave, <<70, 79, 82, 49, 0, 0, 15, ...>>, ...}
-```
-
 ## Build Pipeline and Prepare to Demo
 
 ```elixir
@@ -594,7 +523,7 @@ defmodule QixuanPipeline do
 
     for {name, rel_path} <- models do
       path = Path.join([model_root_path] ++ rel_path)
-      :ok = Orchid.Symbiont.register(name, {Orchid.Symbiont.OrtexRunner, [name: name, path: path]})
+      :ok = OrchidSymbiont.register(name, {Orchid.Symbiont.OrtexRunner, [name: name, path: path]})
     end
 
     Logger.info("All models loaded successfully.")
@@ -602,7 +531,7 @@ defmodule QixuanPipeline do
   end
 
   def build_recipe(model_config) do
-    injector = [extra_hooks_stack: [Orchid.Symbiont.Hooks.Injector]]
+    injector = [extra_hooks_stack: [OrchidSymbiont.Hooks.Injector]]
 
     dur_dict   = model_config.predict_map.maybe_duration.phonemes
     pitch_dict = model_config.predict_map.maybe_pitch.phonemes
@@ -642,12 +571,6 @@ defmodule QixuanPipeline do
     Orchid.Recipe.new(all_steps)
   end
 end
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-{:module, QixuanPipeline, <<70, 79, 82, 49, 0, 0, 39, ...>>, ...}
 ```
 
 Add a tracker
@@ -709,12 +632,6 @@ defmodule Orchid.Livebook.GanttTracker do
 end
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-{:module, Orchid.Livebook.GanttTracker, <<70, 79, 82, 49, 0, 0, 29, ...>>, ...}
-```
-
 ```elixir
 Kino.start_child({Orchid.Livebook.GanttTracker, []})
 
@@ -733,12 +650,6 @@ for {event, suffix} <- events do
     nil
   )
 end
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-[:ok, :ok, :ok, :ok]
 ```
 
 ```elixir
@@ -801,10 +712,21 @@ defmodule MermaidRenderer do
 end
 ```
 
-<!-- livebook:{"output":true} -->
+## Pitch Intervention
 
-```
-{:module, MermaidRenderer, <<70, 79, 82, 49, 0, 0, 19, ...>>, ...}
+```elixir
+defmodule PitchOffset do
+  @behaviour OrchidIntervention.Operate
+
+  def short_circuit?, do: false
+  def data_enable, do: {true, true}
+
+  def merge(inner_payload, intervention_payload) do
+    inner_payload = Nx.backend_transfer(inner_payload, Nx.BinaryBackend)
+    intervention_payload = Nx.backend_transfer(intervention_payload, Nx.BinaryBackend)
+    {:ok, Nx.add(inner_payload, intervention_payload)}
+  end
+end
 ```
 
 Run Workflow
@@ -831,12 +753,18 @@ inputs = [
   ]},
 ]
 
+interventions = %{
+  :pitch_pred_midi => {PitchOffset, Orchid.Param.new(:pitch_pred_midi, :payload, Nx.tensor(12.0, type: :f32))}
+}
+
 Orchid.Livebook.GanttTracker.clear()
 
 {elapse, {:ok, results}} = :timer.tc(
-  &Orchid.run/2,
-  [recipe, inputs
-  ],
+  &Orchid.run/3,
+  [recipe, inputs, [
+    global_hooks_stack: [Orchid.Hook.ApplyInterventions],
+    baggage: %{interventions: interventions}
+  ]],
   :microsecond
 )
 
@@ -846,122 +774,10 @@ Logger.info "Used #{elapse / 1000}ms."
 
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-
-11:55:57.387 [info] Loading DiffSinger models...
-
-11:55:57.390 [info] All models loaded successfully.
-
-11:55:57.392 [debug] ** (RuntimeError) bad return value from Logger formatter Logger.Formatter, got [<<185, 220, 181, 192, 213, 253, 212, 218, 177, 187, 185, 216, 177, 213, 161, 163, 92, 114, 92, 110, 34, 41>>, "\e[0m", 10] after "\e[31m\n11:55:57.388 [error] Writer crashed (:\""
-    (kernel 10.4.1) logger_h_common.erl:433: :logger_h_common.string_to_binary/1
-    (kernel 10.4.1) logger_h_common.erl:399: :logger_h_common.do_log_to_binary/2
-    (kernel 10.4.1) logger_h_common.erl:180: :logger_h_common.log/2
-    (kernel 10.4.1) logger_backend.erl:54: :logger_backend.call_handlers/3
-    (kernel 10.4.1) user_drv.erl:581: :user_drv.server/3
-    (stdlib 7.1) gen_statem.erl:3748: :gen_statem.loop_state_callback/11
-    (stdlib 7.1) proc_lib.erl:333: :proc_lib.init_p_do_apply/3
-
-
-11:55:57.392 [info] init got unexpected: {:io_request, #PID<0.92.0>, #Reference<0.2652535936.353632260.93387>,
- {:put_chars, :unicode,
-  "Failed to write log message to stdout, trying stderr\n"}}
-
-11:55:57.576 [debug] [Symbiont] Inference took 7.987ms via provider [:cpu]
-
-11:55:57.579 [debug] [Symbiont] Inference took 3.174ms via provider [:cpu]
-
-11:55:57.909 [debug] [Symbiont] Inference took 3.686ms via provider [:cpu]
-
-11:55:58.876 [debug] [Symbiont] Inference took 941.875ms via provider [:cpu]
-
-11:55:59.022 [debug] [Symbiont] Inference took 3.891ms via provider [:cpu]
-
-11:55:59.660 [debug] [Symbiont] Inference took 630.988ms via provider [:cpu]
-
-11:56:03.021 [debug] [Symbiont] Inference took 2828.8ms via provider [:cpu]
-
-11:56:04.527 [debug] [Symbiont] Inference took 1428.172ms via provider [:cpu]
-
-11:56:04.600 [info] Used 7208.755ms.
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-:ok
-```
-
 Show Graph
 
 ```elixir
 MermaidRenderer.render recipe
-```
-
-<!-- livebook:{"output":true} -->
-
-```mermaid
-graph TD
-    step_0["⚙️ DurationPredictEncoder"]:::stepClass
-    words(["words"]) -.-> step_0
-    step_0 ==> word_division(["word_division"])
-    step_0 ==> word_duration(["word_duration"])
-    step_0 ==> duration_lang(["duration_lang"])
-    step_0 ==> duration_phoneme(["duration_phoneme"])
-    step_0 ==> duration_ph_midi(["duration_ph_midi"])
-    step_1["⚙️ PredictDuration"]:::stepClass
-    word_division(["word_division"]) -.-> step_1
-    word_duration(["word_duration"]) -.-> step_1
-    duration_lang(["duration_lang"]) -.-> step_1
-    duration_phoneme(["duration_phoneme"]) -.-> step_1
-    duration_ph_midi(["duration_ph_midi"]) -.-> step_1
-    step_1 ==> phoneme_duration_predict(["phoneme_duration_predict"])
-    step_2["⚙️ PitchPredictEncoder"]:::stepClass
-    words(["words"]) -.-> step_2
-    step_2 ==> pitch_lang(["pitch_lang"])
-    step_2 ==> pitch_phoneme(["pitch_phoneme"])
-    step_2 ==> word_duration_from_pitch(["word_duration_from_pitch"])
-    step_2 ==> pitch_ph_midi(["pitch_ph_midi"])
-    step_3["⚙️ PredictPitch"]:::stepClass
-    phoneme_duration_predict(["phoneme_duration_predict"]) -.-> step_3
-    pitch_lang(["pitch_lang"]) -.-> step_3
-    pitch_phoneme(["pitch_phoneme"]) -.-> step_3
-    pitch_ph_midi(["pitch_ph_midi"]) -.-> step_3
-    step_3 ==> pitch_pred_midi(["pitch_pred_midi"])
-    step_4["⚙️ MIDIToPitch"]:::stepClass
-    pitch_pred_midi(["pitch_pred_midi"]) -.-> step_4
-    step_4 ==> pitch_pred(["pitch_pred"])
-    step_5["⚙️ VarianceEncoder"]:::stepClass
-    words(["words"]) -.-> step_5
-    step_5 ==> variance_lang(["variance_lang"])
-    step_5 ==> variance_phoneme(["variance_phoneme"])
-    step_5 ==> word_duration_from_variance(["word_duration_from_variance"])
-    step_5 ==> variance_ph_midi(["variance_ph_midi"])
-    step_6["⚙️ VarianceModel"]:::stepClass
-    phoneme_duration_predict(["phoneme_duration_predict"]) -.-> step_6
-    pitch_pred_midi(["pitch_pred_midi"]) -.-> step_6
-    variance_lang(["variance_lang"]) -.-> step_6
-    variance_phoneme(["variance_phoneme"]) -.-> step_6
-    step_6 ==> voice_pred(["voice_pred"])
-    step_6 ==> breathiness_pred(["breathiness_pred"])
-    step_7["⚙️ Acoustic"]:::stepClass
-    pitch_pred(["pitch_pred"]) -.-> step_7
-    voice_pred(["voice_pred"]) -.-> step_7
-    phoneme_duration_predict(["phoneme_duration_predict"]) -.-> step_7
-    variance_lang(["variance_lang"]) -.-> step_7
-    variance_phoneme(["variance_phoneme"]) -.-> step_7
-    breathiness_pred(["breathiness_pred"]) -.-> step_7
-    step_7 ==> mel(["mel"])
-    step_8["⚙️ NSFHifiGAN_Vocoder"]:::stepClass
-    pitch_pred(["pitch_pred"]) -.-> step_8
-    mel(["mel"]) -.-> step_8
-    step_8 ==> wave_tensor(["wave_tensor"])
-    step_9["⚙️ TensorToWave"]:::stepClass
-    wave_tensor(["wave_tensor"]) -.-> step_9
-    step_9 ==> audio(["audio"])
-    classDef stepClass fill:#2eb82e,stroke:#fff,stroke-width:2px,color:#fff;
-
 ```
 
 Execution Timeline:
@@ -1071,12 +887,6 @@ boundary_layer =
 :ok
 ```
 
-<!-- livebook:{"output":true} -->
-
-```
-:ok
-```
-
 ## Demostration
 
 ```elixir
@@ -1119,67 +929,6 @@ pipeline_tasks =
 
 # Est: T = 4 * Concurrent + 3
 Logger.info "Total used #{elapse / 1000_000}s."
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-
-12:04:36.546 [debug] [Symbiont] Inference took 7.065ms via provider [:cpu]
-
-12:04:36.551 [debug] [Symbiont] Inference took 4.096ms via provider [:cpu]
-
-12:04:36.567 [debug] [Symbiont] Inference took 20.684ms via provider [:cpu]
-
-12:04:36.571 [debug] [Symbiont] Inference took 19.046ms via provider [:cpu]
-
-12:04:36.575 [debug] [Symbiont] Inference took 7.577ms via provider [:cpu]
-
-12:04:36.587 [debug] [Symbiont] Inference took 20.275ms via provider [:cpu]
-
-12:04:36.595 [debug] [Symbiont] Inference took 19.353ms via provider [:cpu]
-
-12:04:36.596 [debug] [Symbiont] Inference took 8.294ms via provider [:cpu]
-
-12:04:36.627 [debug] [Symbiont] Inference took 26.624ms via provider [:cpu]
-
-12:04:37.782 [debug] [Symbiont] Inference took 1200.025ms via provider [:cpu]
-
-12:04:37.793 [debug] [Symbiont] Inference took 10.137ms via provider [:cpu]
-
-12:04:38.928 [debug] [Symbiont] Inference took 1121.996ms via provider [:cpu]
-
-12:04:39.912 [debug] [Symbiont] Inference took 2130.534ms via provider [:cpu]
-
-12:04:39.932 [debug] [Symbiont] Inference took 19.865ms via provider [:cpu]
-
-12:04:42.291 [debug] [Symbiont] Inference took 2346.701ms via provider [:cpu]
-
-12:04:42.834 [debug] [Symbiont] Inference took 2921.267ms via provider [:cpu]
-
-12:04:42.854 [debug] [Symbiont] Inference took 19.353ms via provider [:cpu]
-
-12:04:44.055 [debug] [Symbiont] Inference took 1187.43ms via provider [:cpu]
-
-12:04:44.310 [debug] [Symbiont] Inference took 5380.813ms via provider [:cpu]
-
-12:04:45.921 [debug] [Symbiont] Inference took 1610.854ms via provider [:cpu]
-
-12:04:47.895 [debug] [Symbiont] Inference took 3584.819ms via provider [:cpu]
-
-12:04:49.711 [debug] [Symbiont] Inference took 1815.347ms via provider [:cpu]
-
-12:04:51.681 [debug] [Symbiont] Inference took 3786.035ms via provider [:cpu]
-
-12:04:52.884 [debug] [Symbiont] Inference took 1203.302ms via provider [:cpu]
-
-12:04:52.999 [info] Total used 16.460596s.
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-:ok
 ```
 
 ```elixir
@@ -1252,170 +1001,22 @@ recipe_with_cache = Orchid.Recipe.walk(
 Orchid.run(recipe_with_cache, inputs, cache_recipe_opts)
 
 defmodule BenchmarkRunner do
-  def run_without_cache(recipe, inputs, opts) do
-    Orchid.run(recipe, inputs, opts)
+  def run_without_cache(recipe, inputs) do
+    Orchid.run(recipe, inputs, [executor_and_opts: {Orchid.Executor.Async, []}])
   end
 
-  def run_with_cache(recipe_with_cache, inputs, opts) do
-    Orchid.run(recipe_with_cache, inputs, opts)
+  def run_with_cache(recipe_with_cache, inputs, cache_recipe_opts) do
+    Orchid.run(recipe_with_cache, inputs, cache_recipe_opts)
   end
 end
 
 Benchee.run(
   %{
-    "run_without_cache" => fn ->
-      BenchmarkRunner.run_without_cache(recipe, inputs, [executor_and_opts: {Orchid.Executor.Async, []}]) end,
-    "run_with_cache"    => fn ->
-      BenchmarkRunner.run_with_cache(recipe_with_cache, inputs, cache_recipe_opts) end
+    "run_without_cache" => fn -> BenchmarkRunner.run_without_cache(recipe, inputs) end,
+    "run_with_cache"    => fn -> BenchmarkRunner.run_with_cache(recipe_with_cache, inputs, cache_recipe_opts) end
   },
   time: 3,
   memory_time: 3,
   reduction_time: 2
 )
-```
-
-<!-- livebook:{"output":true} -->
-
-```
-
-12:03:56.906 [debug] [Symbiont] Inference took 7.68ms via provider [:cpu]
-
-12:03:56.911 [debug] [Symbiont] Inference took 4.403ms via provider [:cpu]
-
-12:03:56.922 [debug] [Symbiont] Inference took 10.444ms via provider [:cpu]
-
-12:03:57.875 [debug] [Symbiont] Inference took 933.888ms via provider [:cpu]
-
-12:03:57.880 [debug] [Symbiont] Inference took 4.505ms via provider [:cpu]
-
-12:03:58.527 [debug] [Symbiont] Inference took 637.644ms via provider [:cpu]
-
-12:04:01.423 [debug] [Symbiont] Inference took 2896.281ms via provider [:cpu]
-
-12:04:02.598 [debug] [Symbiont] Inference took 1173.504ms via provider [:cpu]
-Error trying to determine erlang version enoent, falling back to overall OTP version
-Warning: the benchmark run_with_cache is using an evaluated function.
-  Evaluated functions perform slower than compiled functions.
-  You can move the Benchee caller to a function in a module and invoke `Mod.fun()` instead.
-  Alternatively, you can move the benchmark into a benchmark.exs file and run mix run benchmark.exs
-
-Warning: the benchmark run_without_cache is using an evaluated function.
-  Evaluated functions perform slower than compiled functions.
-  You can move the Benchee caller to a function in a module and invoke `Mod.fun()` instead.
-  Alternatively, you can move the benchmark into a benchmark.exs file and run mix run benchmark.exs
-
-Operating System: Windows
-CPU Information: 12th Gen Intel(R) Core(TM) i5-12400
-Number of Available Cores: 12
-Available memory: 31.77 GB
-Elixir 1.19.3
-Erlang 28
-JIT enabled: true
-
-Benchmark suite executing with the following configuration:
-warmup: 2 s
-time: 3 s
-memory time: 3 s
-reduction time: 2 s
-parallel: 1
-inputs: none specified
-Estimated total run time: 20 s
-Excluding outliers: false
-
-Benchmarking run_with_cache ...
-Benchmarking run_without_cache ...
-
-12:04:13.067 [debug] [Symbiont] Inference took 8.499ms via provider [:cpu]
-
-12:04:13.068 [debug] [Symbiont] Inference took 1.843ms via provider [:cpu]
-
-12:04:13.074 [debug] [Symbiont] Inference took 5.427ms via provider [:cpu]
-
-12:04:14.070 [debug] [Symbiont] Inference took 992.051ms via provider [:cpu]
-
-12:04:14.081 [debug] [Symbiont] Inference took 10.444ms via provider [:cpu]
-
-12:04:14.787 [debug] [Symbiont] Inference took 698.47ms via provider [:cpu]
-
-12:04:17.627 [debug] [Symbiont] Inference took 2838.937ms via provider [:cpu]
-
-12:04:18.782 [debug] [Symbiont] Inference took 1153.638ms via provider [:cpu]
-
-12:04:18.872 [debug] [Symbiont] Inference took 7.065ms via provider [:cpu]
-
-12:04:18.875 [debug] [Symbiont] Inference took 2.764ms via provider [:cpu]
-
-12:04:18.893 [debug] [Symbiont] Inference took 17.1ms via provider [:cpu]
-
-12:04:19.936 [debug] [Symbiont] Inference took 1034.649ms via provider [:cpu]
-
-12:04:19.946 [debug] [Symbiont] Inference took 7.475ms via provider [:cpu]
-
-12:04:20.582 [debug] [Symbiont] Inference took 629.555ms via provider [:cpu]
-
-12:04:23.500 [debug] [Symbiont] Inference took 2916.556ms via provider [:cpu]
-
-12:04:24.690 [debug] [Symbiont] Inference took 1189.683ms via provider [:cpu]
-
-12:04:24.768 [debug] [Symbiont] Inference took 5.939ms via provider [:cpu]
-
-12:04:24.770 [debug] [Symbiont] Inference took 1.74ms via provider [:cpu]
-
-12:04:24.782 [debug] [Symbiont] Inference took 11.161ms via provider [:cpu]
-
-12:04:25.754 [debug] [Symbiont] Inference took 966.86ms via provider [:cpu]
-
-12:04:25.762 [debug] [Symbiont] Inference took 6.758ms via provider [:cpu]
-
-12:04:26.397 [debug] [Symbiont] Inference took 625.766ms via provider [:cpu]
-
-12:04:29.282 [debug] [Symbiont] Inference took 2883.993ms via provider [:cpu]
-
-12:04:30.416 [debug] [Symbiont] Inference took 1133.875ms via provider [:cpu]
-
-12:04:30.500 [debug] [Symbiont] Inference took 6.451ms via provider [:cpu]
-
-12:04:30.503 [debug] [Symbiont] Inference took 1.843ms via provider [:cpu]
-
-12:04:30.520 [debug] [Symbiont] Inference took 16.793ms via provider [:cpu]
-
-12:04:31.579 [debug] [Symbiont] Inference took 1051.443ms via provider [:cpu]
-
-12:04:31.587 [debug] [Symbiont] Inference took 6.451ms via provider [:cpu]
-
-12:04:32.247 [debug] [Symbiont] Inference took 652.185ms via provider [:cpu]
-
-12:04:35.146 [debug] [Symbiont] Inference took 2897.715ms via provider [:cpu]
-
-12:04:36.295 [debug] [Symbiont] Inference took 1148.518ms via provider [:cpu]
-Calculating statistics...
-Formatting results...
-
-Name                        ips        average  deviation         median         99th %
-run_with_cache           718.93      0.00139 s   ±105.19%      0.00113 s      0.00363 s
-run_without_cache         0.170         5.90 s     ±0.00%         5.90 s         5.90 s
-
-Comparison: 
-run_with_cache           718.93
-run_without_cache         0.170 - 4239.66x slower +5.90 s
-
-Memory usage statistics:
-
-Name                      average  deviation         median         99th %
-run_with_cache           72.39 KB     ±1.64%       73.34 KB       73.34 KB
-run_without_cache        74.43 KB     ±0.00%       74.43 KB       74.43 KB
-
-Comparison: 
-run_with_cache           73.34 KB
-run_without_cache        74.43 KB - 1.03x memory usage +2.04 KB
-
-Reduction count statistics:
-
-Name                      average  deviation         median         99th %
-run_with_cache             8.73 K     ±0.18%         8.74 K         8.75 K
-run_without_cache          8.87 K     ±0.00%         8.87 K         8.87 K
-
-Comparison: 
-run_with_cache             8.74 K
-run_without_cache          8.87 K - 1.02x reduction count +0.140 K
 ```
